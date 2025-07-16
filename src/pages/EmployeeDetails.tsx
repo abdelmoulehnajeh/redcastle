@@ -38,7 +38,7 @@ const employeeData = {
     workingNow: true,
     startTime: "09:00",
     pointeuse: {
-      totalHours: "168h",
+      totalHours: "8h",
       thisMonth: "142h",
       avgDaily: "7.8h",
       sessions: [
@@ -299,7 +299,7 @@ const EmployeeDetails = () => {
               <CardContent className="p-6">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-primary">{employee.pointeuse.totalHours}</p>
-                  <p className="text-sm text-muted-foreground">Total ce mois</p>
+                  <p className="text-sm text-muted-foreground">Total ce jour</p>
                 </div>
               </CardContent>
             </Card>
