@@ -172,10 +172,10 @@ const EmployeeDetails = () => {
               {user?.role === "admin" && (
                 <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-white border-white/30 hover:bg-white/20">
-                      <Edit className="w-4 h-4 mr-2" />
-                      Modifier
-                    </Button>
+                   <Button variant="outline" size="sm" className="text-white bg-white/10 border-white/50 hover:bg-white/30">
+  <Edit className="w-4 h-4 mr-2" />
+  Modifier
+</Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-md">
                     <DialogHeader>
