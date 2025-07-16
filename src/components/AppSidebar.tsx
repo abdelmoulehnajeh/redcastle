@@ -51,6 +51,12 @@ const employeeMenuItems = [
     icon: FileText,
     description: "Détails contractuels"
   },
+  {
+    title: "Demande Congé",
+    url: "/leave-request",
+    icon: FileText,
+    description: "Demandes de congé"
+  },
 ];
 
 const adminMenuItems = [
@@ -65,6 +71,12 @@ const adminMenuItems = [
     url: "/admin/journal",
     icon: Calendar,
     description: "Gestion des plannings"
+  },
+  {
+    title: "Approbations",
+    url: "/admin/approvals",
+    icon: FileText,
+    description: "Approbations Manager"
   },
 ];
 
@@ -98,6 +110,12 @@ const managerMenuItems = [
     url: "/manager/contrats",
     icon: FileText,
     description: "Gestion contrats"
+  },
+  {
+    title: "Demandes Congé",
+    url: "/manager/leave-requests",
+    icon: FileText,
+    description: "Gestion demandes congé"
   },
 ];
 

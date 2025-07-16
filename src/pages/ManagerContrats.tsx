@@ -83,8 +83,8 @@ const ManagerContrats = () => {
 
   const handleSaveContract = () => {
     toast({
-      title: "Contrat mis à jour",
-      description: `Contrat de ${selectedEmployee?.name} mis à jour avec succès`
+      title: "Contrat envoyé",
+      description: `Contrat de ${selectedEmployee?.name} envoyé à l'administrateur pour approbation`
     });
     setIsEditDialogOpen(false);
   };

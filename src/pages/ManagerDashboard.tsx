@@ -49,6 +49,67 @@ const ManagerDashboard = () => {
   const absentCount = employees.filter(emp => !emp.isWorking).length;
   const lateCount = employees.filter(emp => emp.status === "late").length;
 
+  const getEmployeeShifts = (employeeId: string, day: string) => {
+    // Mock schedule data - in real app, this would come from your backend
+    const schedules: {[key: string]: {[key: string]: string[]}} = {
+      "emp_001": {
+        "Lundi": ["Matin", "Soirée"],
+        "Mardi": ["Matin"],
+        "Mercredi": ["Doublage"],
+        "Jeudi": ["Soirée"],
+        "Vendredi": ["Matin", "Soirée"],
+        "Samedi": ["Soirée"],
+        "Dimanche": []
+      },
+      "emp_002": {
+        "Lundi": ["Soirée"],
+        "Mardi": ["Matin", "Soirée"],
+        "Mercredi": ["Matin"],
+        "Jeudi": ["Doublage"],
+        "Vendredi": ["Soirée"],
+        "Samedi": ["Matin", "Soirée"],
+        "Dimanche": []
+      },
+      "emp_003": {
+        "Lundi": ["Matin"],
+        "Mardi": [],
+        "Mercredi": ["Matin", "Soirée"],
+        "Jeudi": ["Matin"],
+        "Vendredi": ["Doublage"],
+        "Samedi": ["Soirée"],
+        "Dimanche": ["Matin"]
+      },
+      "emp_004": {
+        "Lundi": ["Matin", "Soirée"],
+        "Mardi": ["Doublage"],
+        "Mercredi": [],
+        "Jeudi": ["Matin"],
+        "Vendredi": ["Soirée"],
+        "Samedi": ["Matin"],
+        "Dimanche": []
+      },
+      "emp_005": {
+        "Lundi": ["Soirée"],
+        "Mardi": ["Matin"],
+        "Mercredi": ["Doublage"],
+        "Jeudi": [],
+        "Vendredi": ["Matin", "Soirée"],
+        "Samedi": [],
+        "Dimanche": ["Soirée"]
+      },
+      "emp_006": {
+        "Lundi": ["Matin"],
+        "Mardi": ["Matin", "Soirée"],
+        "Mercredi": ["Matin"],
+        "Jeudi": ["Soirée"],
+        "Vendredi": ["Doublage"],
+        "Samedi": ["Matin"],
+        "Dimanche": []
+      }
+    };
+    return schedules[employeeId]?.[day] || [];
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "present": return "bg-restaurant-green text-white";
@@ -189,6 +250,76 @@ const ManagerDashboard = () => {
                     </div>
                   );
                 })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Weekly Schedule Table */}
+          <Card className="dashboard-card">
+            <CardHeader>
+              <CardTitle>Planning Hebdomadaire</CardTitle>
+              <CardDescription>Horaires de travail par employé et par jour</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-3 font-semibold">Employé</th>
+                      <th className="text-center p-3 font-semibold">Lundi</th>
+                      <th className="text-center p-3 font-semibold">Mardi</th>
+                      <th className="text-center p-3 font-semibold">Mercredi</th>
+                      <th className="text-center p-3 font-semibold">Jeudi</th>
+                      <th className="text-center p-3 font-semibold">Vendredi</th>
+                      <th className="text-center p-3 font-semibold">Samedi</th>
+                      <th className="text-center p-3 font-semibold">Dimanche</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employees.map((employee) => (
+                      <tr key={employee.id} className="border-b hover:bg-muted/50">
+                        <td className="p-3">
+                          <div className="flex items-center space-x-3">
+                            <Avatar className="w-8 h-8">
+                              <AvatarFallback className="text-xs">
+                                {employee.name.split(' ').map(n => n[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">{employee.name}</p>
+                              <p className="text-xs text-muted-foreground">{employee.position}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map((day) => {
+                          const shifts = getEmployeeShifts(employee.id, day);
+                          return (
+                            <td key={day} className="p-3 text-center">
+                              <div className="space-y-1">
+                                {shifts.map((shift, index) => (
+                                  <Badge 
+                                    key={index}
+                                    variant="outline" 
+                                    className={`text-xs ${
+                                      shift === 'Matin' ? 'bg-blue-100 text-blue-800' :
+                                      shift === 'Soirée' ? 'bg-purple-100 text-purple-800' :
+                                      'bg-orange-100 text-orange-800'
+                                    }`}
+                                  >
+                                    {shift}
+                                  </Badge>
+                                ))}
+                                {shifts.length === 0 && (
+                                  <span className="text-xs text-muted-foreground">-</span>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

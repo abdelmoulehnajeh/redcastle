@@ -10,6 +10,7 @@ import Journal from "./pages/Journal";
 import Finance from "./pages/Finance";
 import Contrats from "./pages/Contrats";
 import AdminJournal from "./pages/AdminJournal";
+import AdminApprovals from "./pages/AdminApprovals";
 import AdminLocation from "./pages/AdminLocation";
 import EmployeeDetails from "./pages/EmployeeDetails";
 import ManagerDashboard from "./pages/ManagerDashboard";
@@ -17,6 +18,8 @@ import ManagerPointeuse from "./pages/ManagerPointeuse";
 import ManagerJournal from "./pages/ManagerJournal";
 import ManagerFinance from "./pages/ManagerFinance";
 import ManagerContrats from "./pages/ManagerContrats";
+import ManagerLeaveRequests from "./pages/ManagerLeaveRequests";
+import LeaveRequest from "./pages/LeaveRequest";
 import DashboardLayout from "./components/DashboardLayout";
 import NotFound from "./pages/NotFound";
 
@@ -38,13 +41,16 @@ const App = () => (
             <Route path="/finance" element={<Finance />} />
             <Route path="/contrats" element={<Contrats />} />
             <Route path="/admin/journal" element={<AdminJournal />} />
+            <Route path="/admin/approvals" element={<AdminApprovals />} />
             <Route path="/admin/location/:locationId" element={<AdminLocation />} />
             <Route path="/admin/employee/:employeeId" element={<EmployeeDetails />} />
             <Route path="/manager/dashboard" element={<ManagerDashboard />} />
-            <Route path="/manager/pointeuse" element={<ManagerPointeuse />} />
-            <Route path="/manager/journal" element={<ManagerJournal />} />
-            <Route path="/manager/finance" element={<ManagerFinance />} />
-            <Route path="/manager/contrats" element={<ManagerContrats />} />
+          <Route path="/manager/pointeuse" element={<ManagerPointeuse />} />
+          <Route path="/manager/journal" element={<ManagerJournal />} />
+          <Route path="/manager/finance" element={<ManagerFinance />} />
+          <Route path="/manager/contrats" element={<ManagerContrats />} />
+          <Route path="/manager/leave-requests" element={<ManagerLeaveRequests />} />
+          <Route path="/leave-request" element={<LeaveRequest />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
