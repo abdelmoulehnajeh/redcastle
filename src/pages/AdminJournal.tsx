@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -117,7 +117,7 @@ const AdminJournal = () => {
                 <SelectValue placeholder="Tous les restaurants" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Tous les restaurants</SelectItem>
+                <SelectItem value="all">Tous les restaurants</SelectItem>
                 {locations.map((location) => (
                   <SelectItem key={location} value={location}>
                     {location}
