@@ -1,4 +1,4 @@
-"use strict";exports.id=972,exports.ids=[972],exports.modules={24934:(e,t,i)=>{i.d(t,{$:()=>l,r:()=>s});var a=i(60687),r=i(43210),o=i(8730),n=i(24224),d=i(96241);let s=(0,n.F)("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",{variants:{variant:{default:"bg-primary text-primary-foreground hover:bg-primary/90",destructive:"bg-destructive text-destructive-foreground hover:bg-destructive/90",outline:"border border-input bg-background hover:bg-accent hover:text-accent-foreground",secondary:"bg-secondary text-secondary-foreground hover:bg-secondary/80",ghost:"hover:bg-accent hover:text-accent-foreground",link:"text-primary underline-offset-4 hover:underline"},size:{default:"h-10 px-4 py-2",sm:"h-9 rounded-md px-3",lg:"h-11 rounded-md px-8",icon:"h-10 w-10"}},defaultVariants:{variant:"default",size:"default"}}),l=r.forwardRef(({className:e,variant:t,size:i,asChild:r=!1,...n},l)=>{let m=r?o.DX:"button";return(0,a.jsx)(m,{className:(0,d.cn)(s({variant:t,size:i,className:e})),ref:l,...n})});l.displayName="Button"},50848:(e,t,i)=>{i.d(t,{CO:()=>m,CT:()=>I,DY:()=>D,Dl:()=>l,Dx:()=>G,E0:()=>B,G0:()=>h,HR:()=>T,Hw:()=>A,JH:()=>N,Kj:()=>r,MO:()=>R,Mn:()=>W,Nk:()=>F,Pz:()=>_,QY:()=>d,T1:()=>X,Ut:()=>s,V$:()=>n,XB:()=>v,Yh:()=>w,Yo:()=>y,ZU:()=>C,Zt:()=>Y,a4:()=>L,cD:()=>k,dO:()=>u,eU:()=>b,fQ:()=>z,gG:()=>S,iO:()=>$,iv:()=>Q,j2:()=>E,kD:()=>c,kz:()=>x,mO:()=>q,mS:()=>f,mu:()=>H,ng:()=>j,no:()=>O,pP:()=>M,pY:()=>P,rN:()=>V,t:()=>g,uX:()=>o,ve:()=>J,vo:()=>U,xg:()=>p});var a=i(79826);let r=(0,a.J1)`
+"use strict";exports.id=972,exports.ids=[972],exports.modules={24934:(e,t,i)=>{i.d(t,{$:()=>l,r:()=>s});var a=i(60687),r=i(43210),o=i(8730),n=i(24224),d=i(96241);let s=(0,n.F)("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",{variants:{variant:{default:"bg-primary text-primary-foreground hover:bg-primary/90",destructive:"bg-destructive text-destructive-foreground hover:bg-destructive/90",outline:"border border-input bg-background hover:bg-accent hover:text-accent-foreground",secondary:"bg-secondary text-secondary-foreground hover:bg-secondary/80",ghost:"hover:bg-accent hover:text-accent-foreground",link:"text-primary underline-offset-4 hover:underline"},size:{default:"h-10 px-4 py-2",sm:"h-9 rounded-md px-3",lg:"h-11 rounded-md px-8",icon:"h-10 w-10"}},defaultVariants:{variant:"default",size:"default"}}),l=r.forwardRef(({className:e,variant:t,size:i,asChild:r=!1,...n},l)=>{let m=r?o.DX:"button";return(0,a.jsx)(m,{className:(0,d.cn)(s({variant:t,size:i,className:e})),ref:l,...n})});l.displayName="Button"},50848:(e,t,i)=>{i.d(t,{CO:()=>m,CT:()=>I,DY:()=>D,Dl:()=>l,Dx:()=>E,E0:()=>M,G0:()=>h,HR:()=>N,Hw:()=>A,JH:()=>H,Kj:()=>r,MO:()=>G,Mn:()=>W,Nk:()=>U,Pz:()=>_,QY:()=>d,T1:()=>X,Ut:()=>s,V$:()=>n,XB:()=>v,Yh:()=>w,Yo:()=>y,ZU:()=>C,Zt:()=>Y,a4:()=>T,cD:()=>k,dO:()=>u,eU:()=>b,fQ:()=>z,gG:()=>S,iO:()=>$,iv:()=>Q,j2:()=>R,ju:()=>Z,kD:()=>c,kz:()=>x,mO:()=>q,mS:()=>f,mu:()=>L,ng:()=>j,no:()=>B,pP:()=>O,pY:()=>P,rN:()=>V,t:()=>g,uX:()=>o,ve:()=>J,vo:()=>F,xg:()=>p});var a=i(79826);let r=(0,a.J1)`
   mutation DeleteInfraction($id: ID!) {
     deleteInfraction(id: $id)
   }
@@ -113,7 +113,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -172,7 +172,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -261,7 +261,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -352,7 +352,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -427,7 +427,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -442,6 +442,8 @@
        last_name
        phone
        address
+       birth_date
+       emergency_contact
      }
    }
  }
@@ -464,7 +466,7 @@
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -478,9 +480,103 @@
        birth_date
        emergency_contact
      }
+     user {
+       id
+       username
+       role
+     }
    }
  }
-`,y=(0,a.J1)`
+`;(0,a.J1)`
+  query GetEmployeesByLocation($locationId: Int!) {
+    employees(where: { location_id: { _eq: $locationId } }) {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
+`,(0,a.J1)`
+  query GetEmployeesWithLocation {
+    employees {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+        address
+      }
+    }
+  }
+`,(0,a.J1)`
+  query GetEmployeesForManager($locationId: Int!) {
+    employees(where: { location_id: { _eq: $locationId } }) {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
+`,(0,a.J1)`
+  query GetEmployeesForFinance {
+    employees {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
+`;let y=(0,a.J1)`
  query GetTimeEntries($employeeId: ID!, $startDate: String, $endDate: String) {
    timeEntries(employeeId: $employeeId, startDate: $startDate, endDate: $endDate) {
      id
@@ -525,6 +621,7 @@
      shift_type
      job_position
      is_working
+     is_worked
      location_id
      location {
        id
@@ -542,6 +639,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     date
     shift_type
     is_working
+    is_worked
     location_id
     location {
       id
@@ -816,7 +914,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      tenu_count
    }
  }
-`,R=(0,a.J1)`
+`,G=(0,a.J1)`
  mutation CreateEmployee(
    $username: String!
    $email: String!
@@ -827,7 +925,6 @@ query GetWorkSchedulesRange($employee_id: ID!) {
    $salaire: Float
    $role: String
    $location_id: ID
-   $price_h: Float
  ) {
    createEmployee(
      username: $username
@@ -839,7 +936,6 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      salaire: $salaire
      role: $role
      location_id: $location_id
-     price_h: $price_h
    ) {
      id
      username
@@ -848,9 +944,10 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      prenom
      job_title
      status
+     price_j
    }
  }
-`,G=(0,a.J1)`
+`,E=(0,a.J1)`
  mutation UpdateEmployee(
    $id: ID!
    $salaire: Float
@@ -861,7 +958,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
    $retard: Int
    $tenu_de_travail: Int
    $status: String
-   $price_h: Float
+   $price_j: Float
  ) {
    updateEmployee(
      id: $id
@@ -873,7 +970,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      retard: $retard
      tenu_de_travail: $tenu_de_travail
      status: $status
-     price_h: $price_h
+     price_j: $price_j
    ) {
      id
      salaire
@@ -884,9 +981,10 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      retard
      tenu_de_travail
      status
+     price_j
    }
  }
-`,E=(0,a.J1)`
+`,R=(0,a.J1)`
  mutation DeleteEmployee($id: ID!) {
    deleteEmployee(id: $id)
  }
@@ -950,11 +1048,11 @@ query GetWorkSchedulesRange($employee_id: ID!) {
  mutation ApproveScheduleChange($approval_id: ID!) {
    approveScheduleChange(approval_id: $approval_id)
  }
-`,U=(0,a.J1)`
+`,F=(0,a.J1)`
  mutation RejectScheduleChange($approval_id: ID!, $comment: String) {
    rejectScheduleChange(approval_id: $approval_id, comment: $comment)
  }
-`,F=(0,a.J1)`
+`,U=(0,a.J1)`
  query GetPayrollPayments($period: String!) {
    payrollPayments(period: $period) {
      id
@@ -990,7 +1088,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
      hours_worked
    }
  }
-`,H=(0,a.J1)`
+`,L=(0,a.J1)`
   query GetNotifications($user_id: ID!, $role: String, $only_unseen: Boolean) {
     notifications(user_id: $user_id, role: $role, only_unseen: $only_unseen) {
       id
@@ -1004,15 +1102,15 @@ query GetWorkSchedulesRange($employee_id: ID!) {
       created_at
     }
   }
-`,L=(0,a.J1)`
-  mutation MarkNotificationSeen($id: ID!) { markNotificationSeen(id: $id) }
-`,N=(0,a.J1)`
-  mutation MarkAllNotificationsSeen($user_id: ID!) { markAllNotificationsSeen(user_id: $user_id) }
 `,T=(0,a.J1)`
+  mutation MarkNotificationSeen($id: ID!) { markNotificationSeen(id: $id) }
+`,H=(0,a.J1)`
+  mutation MarkAllNotificationsSeen($user_id: ID!) { markAllNotificationsSeen(user_id: $user_id) }
+`,N=(0,a.J1)`
   mutation NotifyPlanningForEmployee($employee_id: ID!, $month: String!) {
     notifyPlanningForEmployee(employee_id: $employee_id, month: $month)
   }
-`,O=(0,a.J1)`
+`,B=(0,a.J1)`
   mutation UpdateEmployeeProfile(
     $id: ID!
     $nom: String
@@ -1040,7 +1138,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
       location_id
     }
   }
-`,B=(0,a.J1)`
+`,M=(0,a.J1)`
   mutation UpdateUserPassword(
     $employee_id: ID!
     $currentPassword: String!
@@ -1055,7 +1153,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
       username
     }
   }
-`,M=(0,a.J1)`
+`,O=(0,a.J1)`
   mutation UpdateUserInfo(
     $employee_id: ID!
     $username: String
@@ -1072,27 +1170,31 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     }
   }
 `,z=(0,a.J1)`
-  query GetEmployeeDisciplinaryData($employee_id: ID!) {
-    infractions(employee_id: $employee_id) {
+  query GetEmployeeDisciplinaryData($employee_id: ID!, $period: String) {
+    infractions(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
     }
-    absences(employee_id: $employee_id) {
+    absences(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
+      jsutif
     }
-    retards(employee_id: $employee_id) {
+    retards(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
     }
     tenuesTravail(employee_id: $employee_id) {
       id
@@ -1100,6 +1202,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
       description
       price
       created_date
+      dat
     }
   }
 `,Y=(0,a.J1)`
@@ -1108,18 +1211,21 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createInfraction(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `,X=(0,a.J1)`
@@ -1128,18 +1234,21 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createAbsence(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `,Q=(0,a.J1)`
@@ -1148,18 +1257,21 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createRetard(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `,V=(0,a.J1)`
@@ -1180,6 +1292,31 @@ query GetWorkSchedulesRange($employee_id: ID!) {
       description
       price
       created_date
+    }
+  }
+`,Z=(0,a.J1)`
+  query GetWeeklyTemplateSchedules {
+    weeklyTemplateSchedules {
+      id
+      employee_id
+      date
+      start_time
+      end_time
+      shift_type
+      job_position
+      is_working
+      location_id
+      day
+      employee {
+        id
+        nom
+        prenom
+      }
+      location {
+        id
+        name
+        address
+      }
     }
   }
 `},68988:(e,t,i)=>{i.d(t,{p:()=>n});var a=i(60687),r=i(43210),o=i(96241);let n=r.forwardRef(({className:e,type:t,...i},r)=>(0,a.jsx)("input",{type:t,className:(0,o.cn)("flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",e),ref:r,...i}));n.displayName="Input"}};

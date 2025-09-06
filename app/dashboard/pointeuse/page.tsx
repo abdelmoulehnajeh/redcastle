@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useQuery, useMutation } from "@apollo/client"
+import { useQuery, useMutation, useLazyQuery, gql } from "@apollo/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -10,6 +10,16 @@ import { GET_TIME_ENTRIES, CLOCK_IN_MUTATION, CLOCK_OUT_MUTATION } from "@/lib/g
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { useLang, getISODateInTZ, TN_TIMEZONE } from "@/lib/i18n"
+
+const GET_LOCATION_COORDS = gql`
+  query GetLocationCoords($id: ID!) {
+    location(id: $id) {
+      id
+      latitude
+      longitude
+    }
+  }
+`
 
 type TimeEntry = {
   id: string
@@ -93,6 +103,8 @@ export default function PointeusePage() {
   const { t, formatDate, formatTime } = useLang()
   const { user } = useAuth()
   const { toast } = useToast()
+  const [checkingPosition, setCheckingPosition] = useState(false)
+  const [fetchLocationCoords] = useLazyQuery(GET_LOCATION_COORDS)
 
   const [now, setNow] = useState<Date>(new Date())
   const [isClocked, setIsClocked] = useState(false)
@@ -160,11 +172,60 @@ export default function PointeusePage() {
   }, [])
 
   const handleClockIn = async () => {
+    if (!user?.location_id) {
+      toast({
+        title: t("toast_error", "Erreur"),
+        description: t("no_location_for_user", "Aucun restaurant associé à votre compte"),
+        variant: "destructive",
+      })
+      return
+    }
     try {
+      setCheckingPosition(true)
+      // Request current geolocation at click time
+      const pos: GeolocationPosition = await new Promise((resolve, reject) => {
+        if (typeof navigator === "undefined" || !navigator.geolocation) return reject(new Error("Geolocation unavailable"))
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+      })
+      const current = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
+      setLocation(current)
+
+      // Fetch target coordinates for user's location
+      const { data } = await fetchLocationCoords({ variables: { id: String(user.location_id) } })
+      const latStr = data?.location?.latitude
+      const lngStr = data?.location?.longitude
+
+      if (latStr == null || lngStr == null) {
+        toast({
+          title: t("toast_error", "Erreur"),
+          description: t("location_missing_coords", "Le restaurant n’a pas de coordonnées enregistrées"),
+          variant: "destructive",
+        })
+        setCheckingPosition(false)
+        return
+      }
+
+      const tgtLat = Number.parseFloat(String(latStr))
+      const tgtLng = Number.parseFloat(String(lngStr))
+      const curLat5 = Number(current.latitude).toFixed(5)
+      const curLng5 = Number(current.longitude).toFixed(5)
+      const tgtLat5 = Number(tgtLat).toFixed(5)
+      const tgtLng5 = Number(tgtLng).toFixed(5)
+
+      if (curLat5 !== tgtLat5 || curLng5 !== tgtLng5) {
+        toast({
+          title: t("not_at_location", "Hors position"),
+          description: `${t("not_in_location_position", "Vous n’êtes pas à la position du restaurant.")} ${t("expected_location", "Position attendue")}: ${tgtLat5}, ${tgtLng5}`,
+          variant: "destructive",
+        })
+        setCheckingPosition(false)
+        return
+      }
+
       const result = await clockIn({
         variables: {
-          employeeId: user?.employee_id,
-          locationId: user?.location_id ?? null,
+          employeeId: user.employee_id,
+          locationId: user.location_id,
         },
       })
       setIsClocked(true)
@@ -180,6 +241,8 @@ export default function PointeusePage() {
         description: t("toast_checkin_error", "Erreur lors du pointage d'arrivée"),
         variant: "destructive",
       })
+    } finally {
+      setCheckingPosition(false)
     }
   }
 
@@ -303,7 +366,7 @@ export default function PointeusePage() {
             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2" dir="auto">
               <MapPin className="w-4 h-4" />
               <span>
-                {t("position", "Position")}: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                {t("position", "Position")}: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
               </span>
             </div>
           )}
@@ -314,7 +377,7 @@ export default function PointeusePage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Button
           onClick={handleClockIn}
-          disabled={isClocked}
+          disabled={isClocked || checkingPosition}
           size="lg"
           className="h-16 bg-green-600 hover:bg-green-700 disabled:opacity-50"
         >

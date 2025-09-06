@@ -70,9 +70,7 @@ const managerMenuItemsFr: MenuItem[] = [
   { title: "Pointeuse", url: "/dashboard/manager/pointeuse", icon: Clock, description: "Gestion tenues et temps", gradient: "from-emerald-500 to-teal-500" },
   { title: "Journal", url: "/dashboard/manager/journal", icon: Calendar, description: "Planning employés", gradient: "from-purple-500 to-pink-500" },
   { title: "Finance", url: "/dashboard/manager/finance", icon: DollarSign, description: "Salaires et finances", gradient: "from-yellow-500 to-orange-500" },
-  { title: "Contrats", url: "/dashboard/manager/contrats", icon: FileText, description: "Gestion contrats", gradient: "from-indigo-500 to-purple-500" },
   { title: "Demandes Congé", url: "/dashboard/manager/leave-requests", icon: UserCheck, description: "Gestion demandes congé", gradient: "from-green-500 to-emerald-500" },
-  { title: "Employés", url: "/dashboard/manager/employees", icon: Users, description: "Gestion équipe", gradient: "from-cyan-500 to-blue-500" },
 ]
 
 // Arabic labels

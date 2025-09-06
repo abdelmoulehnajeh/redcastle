@@ -128,7 +128,7 @@ export const GET_DASHBOARD_DATA = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -193,7 +193,7 @@ export const GET_EMPLOYEE_DETAILS = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -285,7 +285,7 @@ export const GET_ADMIN_DATA = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -379,7 +379,7 @@ export const GET_FINANCE_DATA = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -460,7 +460,7 @@ export const GET_EMPLOYEES = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -475,6 +475,8 @@ export const GET_EMPLOYEES = gql`
        last_name
        phone
        address
+       birth_date
+       emergency_contact
      }
    }
  }
@@ -499,7 +501,7 @@ export const GET_EMPLOYEE = gql`
      tenu_de_travail
      status
      created_at
-     price_h
+     price_j
      location {
        id
        name
@@ -513,8 +515,114 @@ export const GET_EMPLOYEE = gql`
        birth_date
        emergency_contact
      }
+     user {
+       id
+       username
+       role
+     }
    }
  }
+`
+
+// New: Get Employees by Location
+export const GET_EMPLOYEES_BY_LOCATION = gql`
+  query GetEmployeesByLocation($locationId: Int!) {
+    employees(where: { location_id: { _eq: $locationId } }) {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
+`
+
+// New: Get Employees with Location
+export const GET_EMPLOYEES_WITH_LOCATION = gql`
+  query GetEmployeesWithLocation {
+    employees {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+        address
+      }
+    }
+  }
+`
+
+// New: Get Employees for Manager
+export const GET_EMPLOYEES_FOR_MANAGER = gql`
+  query GetEmployeesForManager($locationId: Int!) {
+    employees(where: { location_id: { _eq: $locationId } }) {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
+`
+
+// New: Get Employees for Finance
+export const GET_EMPLOYEES_FOR_FINANCE = gql`
+  query GetEmployeesForFinance {
+    employees {
+      id
+      nom
+      prenom
+      telephone
+      salaire
+      prime
+      infractions
+      absence
+      retard
+      tenu_de_travail
+      status
+      created_at
+      price_j
+      location {
+        id
+        name
+      }
+    }
+  }
 `
 
 // Time tracking
@@ -570,6 +678,7 @@ export const GET_WORK_SCHEDULES = gql`
      shift_type
      job_position
      is_working
+     is_worked
      location_id
      location {
        id
@@ -589,6 +698,7 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     date
     shift_type
     is_working
+    is_worked
     location_id
     location {
       id
@@ -900,7 +1010,6 @@ export const CREATE_EMPLOYEE = gql`
    $salaire: Float
    $role: String
    $location_id: ID
-   $price_h: Float
  ) {
    createEmployee(
      username: $username
@@ -912,7 +1021,6 @@ export const CREATE_EMPLOYEE = gql`
      salaire: $salaire
      role: $role
      location_id: $location_id
-     price_h: $price_h
    ) {
      id
      username
@@ -921,6 +1029,7 @@ export const CREATE_EMPLOYEE = gql`
      prenom
      job_title
      status
+     price_j
    }
  }
 `
@@ -936,7 +1045,7 @@ export const UPDATE_EMPLOYEE = gql`
    $retard: Int
    $tenu_de_travail: Int
    $status: String
-   $price_h: Float
+   $price_j: Float
  ) {
    updateEmployee(
      id: $id
@@ -948,7 +1057,7 @@ export const UPDATE_EMPLOYEE = gql`
      retard: $retard
      tenu_de_travail: $tenu_de_travail
      status: $status
-     price_h: $price_h
+     price_j: $price_j
    ) {
      id
      salaire
@@ -959,6 +1068,7 @@ export const UPDATE_EMPLOYEE = gql`
      retard
      tenu_de_travail
      status
+     price_j
    }
  }
 `
@@ -1187,27 +1297,31 @@ export const UPDATE_USER_INFO = gql`
 
 // New: Disciplinary System Queries and Mutations
 export const GET_EMPLOYEE_DISCIPLINARY_DATA = gql`
-  query GetEmployeeDisciplinaryData($employee_id: ID!) {
-    infractions(employee_id: $employee_id) {
+  query GetEmployeeDisciplinaryData($employee_id: ID!, $period: String) {
+    infractions(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
     }
-    absences(employee_id: $employee_id) {
+    absences(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
+      jsutif
     }
-    retards(employee_id: $employee_id) {
+    retards(employee_id: $employee_id, period: $period) {
       id
       name
       description
       price
       created_date
+      dat
     }
     tenuesTravail(employee_id: $employee_id) {
       id
@@ -1215,6 +1329,7 @@ export const GET_EMPLOYEE_DISCIPLINARY_DATA = gql`
       description
       price
       created_date
+      dat
     }
   }
 `
@@ -1225,18 +1340,21 @@ export const CREATE_INFRACTION = gql`
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createInfraction(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `
@@ -1247,18 +1365,21 @@ export const CREATE_ABSENCE = gql`
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createAbsence(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `
@@ -1269,18 +1390,21 @@ export const CREATE_RETARD = gql`
     $name: String!
     $description: String
     $price: Float!
+    $dat: String
   ) {
     createRetard(
       employee_id: $employee_id
       name: $name
       description: $description
       price: $price
+      dat: $dat
     ) {
       id
       name
       description
       price
       created_date
+      dat
     }
   }
 `
@@ -1303,6 +1427,34 @@ export const CREATE_TENUE_TRAVAIL = gql`
       description
       price
       created_date
+    }
+  }
+`
+
+// New: Adding query to fetch 7-day weekly template from work_schedules table
+export const GET_WEEKLY_TEMPLATE_SCHEDULES = gql`
+  query GetWeeklyTemplateSchedules {
+    weeklyTemplateSchedules {
+      id
+      employee_id
+      date
+      start_time
+      end_time
+      shift_type
+      job_position
+      is_working
+      location_id
+      day
+      employee {
+        id
+        nom
+        prenom
+      }
+      location {
+        id
+        name
+        address
+      }
     }
   }
 `

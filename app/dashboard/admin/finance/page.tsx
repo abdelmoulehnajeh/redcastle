@@ -7,14 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { useQuery, useMutation } from "@apollo/client"
 import {
@@ -24,6 +17,7 @@ import {
   GET_WORK_SCHEDULES_RANGE,
   GET_PAYROLL_PAYMENTS,
   PAY_SALARY,
+  GET_EMPLOYEE_DISCIPLINARY_DATA,
 } from "@/lib/graphql-queries"
 import { toast } from "sonner"
 import {
@@ -35,7 +29,6 @@ import {
   Calculator,
   CreditCard,
   Banknote,
-
   Menu,
   Eye,
   ChevronLeft,
@@ -56,7 +49,7 @@ interface Employee {
   retard: number
   tenu_de_travail: number
   status: string
-  price_h?: number
+  price_j?: number
   location: { id: string; name: string } | null
 }
 
@@ -332,7 +325,6 @@ export default function AdminFinancePage() {
   })
 
   const calculateNetSalary = (employee: Employee) => {
-    // Keep existing logic for preview display; actual payment amount is computed on the server (hours * price_h)
     const baseSalary = employee.salaire || 0
     const prime = employee.prime || 0
     const avance = employee.avance || 0
@@ -478,7 +470,9 @@ export default function AdminFinancePage() {
               <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 text-orange-300 flex-shrink-0" />
             </CardHeader>
             <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-lg sm:text-2xl font-bold text-orange-400 truncate">-{formatAmount(totalAdvances)}</div>
+              <div className="text-lg sm:text-2xl font-bold text-orange-400 truncate">
+                -{formatAmount(totalAdvances)}
+              </div>
               <p className="text-[10px] sm:text-xs text-orange-200" dir="auto">
                 {t.advancesSub}
               </p>
@@ -526,7 +520,11 @@ export default function AdminFinancePage() {
                     <span dir="auto">{t.allRestaurants}</span>
                   </SelectItem>
                   {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id} className="glass-card bg-transparent text-white text-xs sm:text-sm">
+                    <SelectItem
+                      key={location.id}
+                      value={location.id}
+                      className="glass-card bg-transparent text-white text-xs sm:text-sm"
+                    >
                       <span dir="auto">{location.name}</span>
                     </SelectItem>
                   ))}
@@ -577,7 +575,10 @@ export default function AdminFinancePage() {
                 const paidLabel = paid && typeof amt === "number" ? t.paidWith(formatAmount(amt)) : t.paid
 
                 return (
-                  <Card key={employee.id} className="glass-card bg-gradient-to-br from-slate-800/50 to-green-900/50 border border-white/10">
+                  <Card
+                    key={employee.id}
+                    className="glass-card bg-gradient-to-br from-slate-800/50 to-green-900/50 border border-white/10"
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1 min-w-0">
@@ -598,11 +599,17 @@ export default function AdminFinancePage() {
                             </span>
                           </div>
                           {paid ? (
-                            <Badge className="bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 text-xs" dir="auto">
+                            <Badge
+                              className="bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 text-xs"
+                              dir="auto"
+                            >
                               {t.paid}
                             </Badge>
                           ) : (
-                            <Badge className="bg-yellow-600/30 text-yellow-300 border border-yellow-600/40 text-xs" dir="auto">
+                            <Badge
+                              className="bg-yellow-600/30 text-yellow-300 border border-yellow-600/40 text-xs"
+                              dir="auto"
+                            >
                               {t.unpaid}
                             </Badge>
                           )}
@@ -670,15 +677,33 @@ export default function AdminFinancePage() {
               <Table className="text-white">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs lg:text-sm" dir="auto">{t.colEmployee}</TableHead>
-                    <TableHead className="text-xs lg:text-sm hidden lg:table-cell" dir="auto">{t.colRestaurant}</TableHead>
-                    <TableHead className="text-xs lg:text-sm" dir="auto">{t.colBaseSalary}</TableHead>
-                    <TableHead className="text-xs lg:text-sm hidden md:table-cell" dir="auto">{t.colBonus}</TableHead>
-                    <TableHead className="text-xs lg:text-sm hidden md:table-cell" dir="auto">{t.colAdvance}</TableHead>
-                    <TableHead className="text-xs lg:text-sm hidden lg:table-cell" dir="auto">{t.colPenalties}</TableHead>
-                    <TableHead className="text-xs lg:text-sm" dir="auto">{t.colNetPay}</TableHead>
-                    <TableHead className="text-xs lg:text-sm" dir="auto">{t.colStatus}</TableHead>
-                    <TableHead className="text-xs lg:text-sm" dir="auto">{t.colActions}</TableHead>
+                    <TableHead className="text-xs lg:text-sm" dir="auto">
+                      {t.colEmployee}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm hidden lg:table-cell" dir="auto">
+                      {t.colRestaurant}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm" dir="auto">
+                      {t.colBaseSalary}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm hidden md:table-cell" dir="auto">
+                      {t.colBonus}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm hidden md:table-cell" dir="auto">
+                      {t.colAdvance}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm hidden lg:table-cell" dir="auto">
+                      {t.colPenalties}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm" dir="auto">
+                      {t.colNetPay}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm" dir="auto">
+                      {t.colStatus}
+                    </TableHead>
+                    <TableHead className="text-xs lg:text-sm" dir="auto">
+                      {t.colActions}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -719,11 +744,15 @@ export default function AdminFinancePage() {
                         </TableCell>
 
                         <TableCell className="hidden md:table-cell">
-                          <span className="font-medium text-blue-300 text-xs lg:text-sm">+{formatAmount(employee.prime || 0)}</span>
+                          <span className="font-medium text-blue-300 text-xs lg:text-sm">
+                            +{formatAmount(employee.prime || 0)}
+                          </span>
                         </TableCell>
 
                         <TableCell className="hidden md:table-cell">
-                          <span className="font-medium text-orange-300 text-xs lg:text-sm">-{formatAmount(employee.avance || 0)}</span>
+                          <span className="font-medium text-orange-300 text-xs lg:text-sm">
+                            -{formatAmount(employee.avance || 0)}
+                          </span>
                         </TableCell>
 
                         <TableCell className="hidden lg:table-cell">
@@ -745,11 +774,17 @@ export default function AdminFinancePage() {
 
                         <TableCell>
                           {paid ? (
-                            <Badge className="bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 text-xs" dir="auto">
+                            <Badge
+                              className="bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 text-xs"
+                              dir="auto"
+                            >
                               {t.paid}
                             </Badge>
                           ) : (
-                            <Badge className="bg-yellow-600/30 text-yellow-300 border border-yellow-600/40 text-xs" dir="auto">
+                            <Badge
+                              className="bg-yellow-600/30 text-yellow-300 border border-yellow-600/40 text-xs"
+                              dir="auto"
+                            >
                               {t.unpaid}
                             </Badge>
                           )}
@@ -767,7 +802,7 @@ export default function AdminFinancePage() {
                                 try {
                                   await paySalary({ variables: { employee_id: employee.id, period: selectedMonth } })
                                   toast.success(
-                                    "Salaire payé (basé sur heures × prix horaire) et primes/avances réinitialisées.",
+                                    "Salaire payé (basé sur jours × prix/jour) et primes/avances réinitialisées.",
                                   )
                                   await refetchPayments()
                                   await refetchEmployees()
@@ -865,12 +900,22 @@ function WorkCalendarModal({
     fetchPolicy: "cache-and-network",
   })
 
+  const { data: discData } = useQuery(GET_EMPLOYEE_DISCIPLINARY_DATA, {
+    variables: { employee_id: employee?.id, period: ym },
+    skip: !employee || !employee.id,
+    fetchPolicy: "cache-and-network",
+  })
+
   const { data: locationsData } = useQuery(GET_LOCATIONS, { fetchPolicy: "cache-first" })
 
-  const allLocationsList = useMemo(() => locationsData?.locations.map((l: any) => ({
-    id: String(l.id),
-    name: l.name,
-  })) || [], [locationsData])
+  const allLocationsList = useMemo(
+    () =>
+      locationsData?.locations.map((l: any) => ({
+        id: String(l.id),
+        name: l.name,
+      })) || [],
+    [locationsData],
+  )
 
   const timeEntries = teData?.timeEntries || []
   const workSchedules = schedulesData?.workSchedulesRange || []
@@ -879,7 +924,10 @@ function WorkCalendarModal({
   const monthSchedules = useMemo(() => {
     return workSchedules.filter((s: any) => {
       const date = new Date(normalizeDateKey(s.date))
-      return date.getFullYear() === parseInt(ym.split('-')[0]) && (date.getMonth() + 1) === parseInt(ym.split('-')[1])
+      return (
+        date.getFullYear() === Number.parseInt(ym.split("-")[0]) &&
+        date.getMonth() + 1 === Number.parseInt(ym.split("-")[1])
+      )
     })
   }, [workSchedules, ym])
 
@@ -900,27 +948,51 @@ function WorkCalendarModal({
 
   // Calculate stats
   const [single_days, double_days] = useMemo(() => {
-    let single = 0, double = 0
+    let single = 0,
+      double = 0
     for (const s of monthSchedules) {
-      if (s.shift_type === 'Doublage') double++
-      else if (s.shift_type === 'Matin' || s.shift_type === 'Soirée') single++
+      if (s?.is_worked === true) {
+        if (s.shift_type === "Doublage") double++
+        else if (s.shift_type === "Matin" || s.shift_type === "Soirée") single++
+      }
     }
     return [single, double]
   }, [monthSchedules])
 
   const workedDays = single_days + double_days
   const offDays = lastDay - workedDays
-  const totalHours = single_days * 9 + double_days * 18
-  const hourlyRate = employee?.price_h || 15
+  const totalDays = single_days + double_days * 2 // Doublage = 2 days, Matin/Soirée = 1 day
+  const dailyRate = employee?.price_j || (employee?.salaire ? employee.salaire / 30 : 0)
   const bonus = employee?.prime || 0
   const advances = employee?.avance || 0
-  const estimatedAmount = totalHours * hourlyRate + bonus - advances
-  const justifiedAbsences = Math.floor((employee?.absence || 0) * 0.6)
-  const unjustifiedAbsences = Math.ceil((employee?.absence || 0) * 0.4)
-  const absencesWithoutNotice = Math.floor((employee?.absence || 0) * 0.2)
-  const infractions = employee?.infractions || 0
-  const lateCount = employee?.retard || 0
 
+  // Monthly disciplinary deductions: sum(price) where created_date is in current month
+  const disciplinaryTotals = useMemo(() => {
+    // Server already filters by month using period, so use arrays directly
+    const absences: any[] = discData?.absences || []
+    const infractionsArr: any[] = discData?.infractions || []
+    const retardsArr: any[] = discData?.retards || []
+
+    const sum = (arr: any[]) => arr.reduce((s, it) => s + (Number(it.price) || 0), 0)
+    const bool = (v: any) => v === true || v === 1 || String(v).toLowerCase() === 'true'
+
+    return {
+      abs: sum(absences),
+      inf: sum(infractionsArr),
+      ret: sum(retardsArr),
+      absJCount: absences.filter((a: any) => bool(a.jsutif)).length,
+      absNJCount: absences.filter((a: any) => !bool(a.jsutif)).length,
+      infCount: infractionsArr.length,
+      retCount: retardsArr.length,
+    }
+  }, [discData])
+
+  const totalDeductions = disciplinaryTotals.abs + disciplinaryTotals.inf + disciplinaryTotals.ret
+  const estimatedAmount = Math.max(0, Math.round(((totalDays * dailyRate + bonus - advances - totalDeductions) || 0) * 100) / 100)
+  const justifiedAbsences = disciplinaryTotals.absJCount
+  const unjustifiedAbsences = disciplinaryTotals.absNJCount
+  const infractionsCount = disciplinaryTotals.infCount
+  const lateCount = disciplinaryTotals.retCount
   const monthInfo = useMemo(() => getMonthInfo(new Date(`${ym}-01`)), [ym])
   const grid = monthInfo.grid
 
@@ -942,6 +1014,7 @@ function WorkCalendarModal({
       toast.error("Erreur lors du paiement")
     }
   }
+console.log('infractions ddd', infractionsCount, discData?.infractions)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -958,9 +1031,6 @@ function WorkCalendarModal({
           <DialogDescription className="text-slate-300 text-xs sm:text-base" dir="auto">
             {t.calendarDesc(monthText)}
           </DialogDescription>
-  
-         
-   
         </DialogHeader>
 
         <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -980,19 +1050,29 @@ function WorkCalendarModal({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => {
-                const d = new Date(`${ym}-01`)
-                d.setMonth(d.getMonth() - 1)
-                onOpenChange(false)
-              }} aria-label={t.prevMonth}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const d = new Date(`${ym}-01`)
+                  d.setMonth(d.getMonth() - 1)
+                  onOpenChange(false)
+                }}
+                aria-label={t.prevMonth}
+              >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <div className="px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-sm">{monthText}</div>
-              <Button variant="ghost" size="icon" onClick={() => {
-                const d = new Date(`${ym}-01`)
-                d.setMonth(d.getMonth() + 1)
-                onOpenChange(false)
-              }} aria-label={t.nextMonth}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const d = new Date(`${ym}-01`)
+                  d.setMonth(d.getMonth() + 1)
+                  onOpenChange(false)
+                }}
+                aria-label={t.nextMonth}
+              >
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
@@ -1030,17 +1110,11 @@ function WorkCalendarModal({
                         : "bg-white/5 hover:bg-white/10 border border-white/10"
                     }`}
                   >
-                    <span
-                      className={`text-xs font-medium block ${
-                        isToday ? "text-blue-200" : "text-slate-200"
-                      }`}
-                    >
+                    <span className={`text-xs font-medium block ${isToday ? "text-blue-200" : "text-slate-200"}`}>
                       {d.getDate()}
                     </span>
 
-                    {isToday && (
-                      <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
-                    )}
+                    {isToday && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-400 rounded-full"></span>}
 
                     <div className="absolute left-1 bottom-1 flex flex-col items-start gap-0.5">
                       {isDouble ? (
@@ -1095,7 +1169,7 @@ function WorkCalendarModal({
                   </div>
                   <div className="flex justify-between items-center p-2 sm:p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                     <span className="text-xs sm:text-sm text-white/90">Jours travaillés</span>
-                    <span className="text-sm sm:text-lg font-bold text-emerald-400">{workedDays}</span>
+                    <span className="text-sm sm:text-lg font-bold text-emerald-400">{totalDays}</span>
                   </div>
                   <div className="flex justify-between items-center p-2 sm:p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
                     <span className="text-xs sm:text-sm text-white/90">Absences justifiées</span>
@@ -1114,7 +1188,7 @@ function WorkCalendarModal({
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex justify-between items-center p-2 sm:p-3 rounded-lg bg-red-500/10 border border-red-500/20">
                     <span className="text-xs sm:text-sm text-white/90">Infractions</span>
-                    <span className="text-sm sm:text-lg font-bold text-red-400">{infractions}</span>
+                    <span className="text-sm sm:text-lg font-bold text-red-400">{infractionsCount}</span>
                   </div>
                   <div className="flex justify-between items-center p-2 sm:p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
                     <span className="text-xs sm:text-sm text-white/90">Retards</span>
@@ -1136,9 +1210,7 @@ function WorkCalendarModal({
                   </div>
                   <div>
                     <p className="text-xs sm:text-sm text-white/80 mb-2">Salaire calculé</p>
-                    <p className="text-lg sm:text-2xl font-bold text-white">
-                      {estimatedAmount.toLocaleString()} DT
-                    </p>
+                    <p className="text-lg sm:text-2xl font-bold text-white">{estimatedAmount.toLocaleString()} DT</p>
                   </div>
                   <Button
                     onClick={handlePayment}

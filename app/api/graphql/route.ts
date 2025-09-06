@@ -1,13 +1,10 @@
 // Helper function to create user-specific table
 async function createUserTable(username, id) {
   // Use username.toLowerCase() + '_' + id as table name (no trailing space)
-  const tableName = `${username.toLowerCase()}_${id}`;
+  const tableName = `${username.toLowerCase()}_${id}`
   try {
     // Check if table already exists in information_schema.tables
-    const existsRes = await pool.query(
-      `SELECT 1 FROM information_schema.tables WHERE table_name = $1`,
-      [tableName]
-    );
+    const existsRes = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_name = $1`, [tableName])
     if (existsRes.rows.length === 0) {
       try {
         await pool.query(`
@@ -19,6 +16,7 @@ async function createUserTable(username, id) {
               shift_type character varying(50) NOT NULL,
               job_position character varying(255),
               is_working boolean DEFAULT false,
+              is_worked boolean DEFAULT false,
               start_time time without time zone,
               end_time time without time zone,
               created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -26,47 +24,54 @@ async function createUserTable(username, id) {
               location_id integer,
               retard character varying(50),
               status character varying(50),
+              traite character varying(50),
               CONSTRAINT "${tableName}_pkey" PRIMARY KEY (date)
           );
-        `);
-        await pool.query(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_date" ON "${tableName}" USING btree (date ASC NULLS LAST);`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_employee" ON "${tableName}" USING btree (id ASC NULLS LAST);`);
+        `)
+        await pool.query(
+          `CREATE INDEX IF NOT EXISTS "idx_${tableName}_date" ON "${tableName}" USING btree (date ASC NULLS LAST);`,
+        )
+        await pool.query(
+          `CREATE INDEX IF NOT EXISTS "idx_${tableName}_employee" ON "${tableName}" USING btree (id ASC NULLS LAST);`,
+        )
       } catch (err) {
         // If duplicate key error, ignore (table/type already exists)
-        if (err.code === '23505' && String(err.detail || '').includes('already exists')) {
+        if (err.code === "23505" && String(err.detail || "").includes("already exists")) {
           // Table/type already exists, safe to continue
         } else {
-          throw err;
+          throw err
         }
       }
     }
-    return tableName;
+    return tableName
   } catch (error) {
-    console.error(`Error creating table ${tableName}:`, error);
-    throw new Error(`Failed to create user table: ${tableName}`);
+    console.error(`Error creating table ${tableName}:`, error)
+    throw new Error(`Failed to create user table: ${tableName}`)
   }
 }
 
 // Helper function to get user's table name
 async function getUserTableName(employeeId) {
   try {
-    const userRes = await pool.query("SELECT id, username, user_table_name FROM users WHERE employee_id = $1", [employeeId]);
+    const userRes = await pool.query("SELECT id, username, user_table_name FROM users WHERE employee_id = $1", [
+      employeeId,
+    ])
     if (userRes.rows.length === 0) {
-      throw new Error("User not found for employee");
+      throw new Error("User not found for employee")
     }
-    const user = userRes.rows[0];
+    const user = userRes.rows[0]
     // Use username.toLowerCase() + '_' + id as table name (no trailing space)
-    const tableName = `${user.username.toLowerCase()}_${user.id}`;
+    const tableName = `${user.username.toLowerCase()}_${user.id}`
     // If user_table_name is not set or is different, update it
     if (!user.user_table_name || user.user_table_name !== tableName) {
-      await createUserTable(user.username, user.id);
-      await pool.query("UPDATE users SET user_table_name = $1 WHERE employee_id = $2", [tableName, employeeId]);
-      return tableName;
+      await createUserTable(user.username, user.id)
+      await pool.query("UPDATE users SET user_table_name = $1 WHERE employee_id = $2", [tableName, employeeId])
+      return tableName
     }
-    return user.user_table_name;
+    return user.user_table_name
   } catch (error) {
-    console.error("Error getting user table name:", error);
-    throw error;
+    console.error("Error getting user table name:", error)
+    throw error
   }
 }
 import { ApolloServer } from "@apollo/server"
@@ -279,7 +284,7 @@ type Employee {
   status: String!
   role: String
   created_at: String
-  price_h: Float
+  price_j: Float
   location: Location
   profile: Profile
   user: User
@@ -291,6 +296,8 @@ type Location {
   address: String!
   phone: String
   created_at: String
+  latitude: String
+  longitude: String
   manager: Employee
   employees: [Employee!]!
 }
@@ -302,17 +309,20 @@ type Infraction {
   employee_id: ID!
   price: Float!
   created_date: String!
+  dat: String!
   employee: Employee
 }
 
 type Absence {
-  id: ID!
-  name: String!
-  description: String
-  employee_id: ID!
-  price: Float!
-  created_date: String!
-  employee: Employee
+id: ID!
+name: String!
+description: String
+employee_id: ID!
+price: Float!
+created_date: String!
+dat: String!
+jsutif: Boolean
+employee: Employee
 }
 
 type Retard {
@@ -322,6 +332,7 @@ type Retard {
   employee_id: ID!
   price: Float!
   created_date: String!
+  dat: String!
   employee: Employee
 }
 
@@ -332,25 +343,27 @@ type TenueTravail {
   employee_id: ID!
   price: Float!
   created_date: String!
+  dat: String!
   employee: Employee
 }
 
 type WorkSchedule {
-  id: ID!
-  employee_id: String!
-  date: String!
-  start_time: String
-  end_time: String
-  shift_type: String!
-  job_position: String
-  is_working: Boolean!
-  created_at: String
-  location_id: String
-  day: String
-  retard: String
-  status: String
-  employee: Employee
-  location: Location
+id: ID!
+employee_id: String!
+date: String!
+start_time: String
+end_time: String
+shift_type: String!
+job_position: String
+is_working: Boolean!
+is_worked: Boolean
+created_at: String
+location_id: String
+day: String
+retard: String
+status: String
+employee: Employee
+location: Location
 }
 
 type Contract {
@@ -469,10 +482,11 @@ type Query {
   dashboardStats(userId: ID!, role: String!): DashboardStats
   adminApprovals(status: String): [AdminApproval!]!
   notifications(user_id: ID!, role: String, only_unseen: Boolean): [Notification!]!
-  infractions(employee_id: ID!): [Infraction!]!
-  absences(employee_id: ID!): [Absence!]!
-  retards(employee_id: ID!): [Retard!]!
+  infractions(employee_id: ID!, period: String): [Infraction!]!
+  absences(employee_id: ID!, period: String): [Absence!]!
+  retards(employee_id: ID!, period: String): [Retard!]!
   tenuesTravail(employee_id: ID!): [TenueTravail!]!
+  weeklyTemplateSchedules: [WorkSchedule!]!
 }
 
 type Mutation {
@@ -488,7 +502,7 @@ type Mutation {
     avance: Float
     tenu_de_travail: Int
     status: String
-    price_h: Float
+    price_j: Float
   ): Employee
   createWorkSchedule(
     employee_id: ID!
@@ -540,7 +554,6 @@ type Mutation {
     salaire: Float
     role: String
     location_id: ID
-    price_h: Float
   ): Employee
   deleteEmployee(id: ID!): Boolean
   clockIn(employeeId: ID!, locationId: ID!): TimeEntry
@@ -593,6 +606,7 @@ type Mutation {
     name: String!
     description: String
     price: Float!
+    dat: String
   ): Infraction
   deleteInfraction(id: ID!): Boolean!
   createAbsence(
@@ -600,6 +614,7 @@ type Mutation {
     name: String!
     description: String
     price: Float!
+    dat: String
   ): Absence
   deleteAbsence(id: ID!): Boolean!
   createRetard(
@@ -607,6 +622,7 @@ type Mutation {
     name: String!
     description: String
     price: Float!
+    dat: String
   ): Retard
   deleteRetard(id: ID!): Boolean!
   createTenueTravail(
@@ -636,18 +652,53 @@ input WorkScheduleInput {
 // Compose resolvers by extending your previous ones:
 const resolvers = {
   Query: {
+    weeklyTemplateSchedules: async () => {
+      try {
+        // Fetch the 7-day template from work_schedules table for all employees
+        const result = await pool.query(
+          `SELECT ws.*, e.nom, e.prenom, e.id as employee_id, l.id as location_id, l.name as location_name, l.address as location_address
+           FROM work_schedules ws
+           LEFT JOIN employees e ON ws.employee_id = e.id
+           LEFT JOIN locations l ON ws.location_id = l.id
+           WHERE e.status = 'active'
+           ORDER BY ws.employee_id ASC`,
+        )
+
+        return result.rows.map((row) => ({
+          ...row,
+          employee_id: String(row.employee_id),
+          day: row.day || new Date(row.date).toLocaleDateString("en-US", { weekday: "long" }).toLowerCase(),
+          employee: {
+            id: String(row.employee_id),
+            nom: row.nom || "",
+            prenom: row.prenom || "",
+          },
+          location: row.location_id
+            ? {
+                id: String(row.location_id),
+                name: row.location_name || "",
+                address: row.location_address || "",
+              }
+            : null,
+        }))
+      } catch (error) {
+        console.error("Error fetching weekly template schedules:", error)
+        return []
+      }
+    },
+
     // Query: fetch all work schedules for all employees for a date range from the shared work_schedules table
     allUserWorkSchedules: async (_: any, { start, end }: { start: string; end: string }) => {
       try {
         // Get all employees
-        const employeesRes = await pool.query('SELECT id, nom, prenom FROM employees WHERE status = \'active\'');
-        const employees = employeesRes.rows;
+        const employeesRes = await pool.query("SELECT id, nom, prenom FROM employees WHERE status = 'active'")
+        const employees = employeesRes.rows
         // Build all dates in range
-        const startDate = new Date(start);
-        const endDate = new Date(end);
-        const days = [];
+        const startDate = new Date(start)
+        const endDate = new Date(end)
+        const days = []
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          days.push(new Date(d));
+          days.push(new Date(d))
         }
         // Fetch all work_schedules in range
         const result = await pool.query(
@@ -657,30 +708,34 @@ const resolvers = {
            LEFT JOIN locations l ON ws.location_id = l.id
            WHERE ws.date BETWEEN $1 AND $2
            ORDER BY ws.date ASC`,
-          [start, end]
-        );
-        const rows = result.rows;
+          [start, end],
+        )
+        const rows = result.rows
         // For each employee and each day, ensure there is a row (fill with 'Repos' if missing)
-        const resultRows = [];
+        const resultRows = []
         for (const emp of employees) {
           for (const d of days) {
-            const ymd = d.toISOString().slice(0, 10);
-            const found = rows.find(r => String(r.employee_id) === String(emp.id) && r.date.toISOString().slice(0,10) === ymd);
+            const ymd = d.toISOString().slice(0, 10)
+            const found = rows.find(
+              (r) => String(r.employee_id) === String(emp.id) && r.date.toISOString().slice(0, 10) === ymd,
+            )
             if (found) {
               resultRows.push({
                 ...found,
                 employee_id: String(emp.id),
                 employee: {
                   id: String(emp.id),
-                  nom: emp.nom || '',
-                  prenom: emp.prenom || '',
+                  nom: emp.nom || "",
+                  prenom: emp.prenom || "",
                 },
-                location: found.location_id ? {
-                  id: String(found.location_id),
-                  name: found.location_name || '',
-                  address: found.location_address || '',
-                } : null,
-              });
+                location: found.location_id
+                  ? {
+                      id: String(found.location_id),
+                      name: found.location_name || "",
+                      address: found.location_address || "",
+                    }
+                  : null,
+              })
             } else {
               resultRows.push({
                 id: `virtual-${emp.id}-${ymd}`,
@@ -688,28 +743,28 @@ const resolvers = {
                 date: ymd,
                 start_time: null,
                 end_time: null,
-                shift_type: 'Repos',
+                shift_type: "Repos",
                 job_position: null,
                 is_working: false,
                 location_id: null,
-                day: new Date(ymd).toLocaleDateString('en-US', { weekday: 'long' }),
+                day: new Date(ymd).toLocaleDateString("en-US", { weekday: "long" }),
                 retard: null,
-                status: 'active',
+                status: "active",
                 created_at: null,
                 employee: {
                   id: String(emp.id),
-                  nom: emp.nom || '',
-                  prenom: emp.prenom || '',
+                  nom: emp.nom || "",
+                  prenom: emp.prenom || "",
                 },
                 location: null,
-              });
+              })
             }
           }
         }
-        return resultRows;
+        return resultRows
       } catch (error) {
-        console.error("Error fetching all work schedules:", error);
-        return [];
+        console.error("Error fetching all work schedules:", error)
+        return []
       }
     },
     recentActivities: async (_: any, { limit = 10 }: { limit?: number } = {}) => {
@@ -918,7 +973,7 @@ const resolvers = {
         if (!employee_id) {
           throw new Error("employee_id is required to fetch work schedules.")
         }
-        let tableName;
+        let tableName
         try {
           tableName = await getUserTableName(employee_id)
         } catch (err) {
@@ -926,7 +981,7 @@ const resolvers = {
           tableName = "work_schedules"
         }
         let query = `SELECT *, l.name as location_name, l.address as location_address FROM "${tableName}" ws LEFT JOIN locations l ON ws.location_id = l.id WHERE 1=1`
-        const params: any[] = [];
+        const params: any[] = []
         if (date) {
           params.push(date)
           query += ` AND ws.date = $${params.length}`
@@ -951,24 +1006,22 @@ const resolvers = {
         throw new Error("Failed to fetch work schedules")
       }
     },
-    workSchedulesRange: async (
-      _: any,
-      { employee_id }: { employee_id: string },
-    ) => {
+    workSchedulesRange: async (_: any, { employee_id }: { employee_id: string }) => {
       try {
-        const tableName = await getUserTableName(employee_id);
+        console.log("[workSchedulesRange] Fetching work schedules for employee_id:", employee_id)
+        const tableName = await getUserTableName(employee_id)
+        console.log("[workSchedulesRange] dssssssssUsing table name:", tableName)
         // Fetch all rows for this employee in the per-user table, exactly as saved
-        const result = await pool.query(
-          `SELECT * FROM "${tableName}" WHERE employee_id = $1 ORDER BY date ASC`,
-          [employee_id],
-        );
+        const result = await pool.query(`SELECT * FROM "${tableName}" WHERE employee_id = $1 ORDER BY date ASC`, [
+          employee_id,
+        ])
         // DEBUG: Log the table name and all rows fetched
-        // console.log('[workSchedulesRange] RAW DB rows for', tableName, ':', result.rows);
+        console.log('[workSchedulesRange] RAW DB rows for', tableName, ':', result.rows);
 
-        return result.rows;
+        return result.rows
       } catch (error) {
-        console.error("Error fetching work schedules range:", error);
-        return [];
+        console.error("Error fetching work schedules range:", error)
+        return []
       }
     },
     contracts: async (_: any, { employee_id }: { employee_id?: string }) => {
@@ -1204,34 +1257,68 @@ const resolvers = {
       }
     },
 
-    infractions: async (_: any, { employee_id }: { employee_id: string }) => {
+    infractions: async (_: any, { employee_id, period }: { employee_id: string; period?: string }) => {
       try {
-        const result = await pool.query("SELECT * FROM infractions WHERE employee_id = $1 ORDER BY created_date DESC", [
-          employee_id,
-        ])
-        return result.rows
+        if (period) {
+          const likeRef = `${period}%`
+                  console.log( 'eeee',{ employee_id, likeRef } )
+
+          const q = `SELECT * FROM infractions
+                     WHERE employee_id = $1
+                       AND dat::text LIKE $2
+                     ORDER BY dat DESC`
+          const result = await pool.query(q, [employee_id, likeRef])
+          console.log( 'rrrr', result.rows )
+          return result.rows
+        } else {
+          const result = await pool.query("SELECT * FROM infractions WHERE employee_id = $1 ORDER BY created_date DESC", [
+            employee_id,
+          ])
+          return result.rows
+        }
       } catch (error) {
         console.error("Error fetching infractions:", error)
         return []
       }
     },
-    absences: async (_: any, { employee_id }: { employee_id: string }) => {
+    absences: async (_: any, { employee_id, period }: { employee_id: string; period?: string }) => {
       try {
-        const result = await pool.query("SELECT * FROM absences WHERE employee_id = $1 ORDER BY created_date DESC", [
-          employee_id,
-        ])
-        return result.rows
+        if (period) {
+          const likeRef = `${period}%`
+          const q = `SELECT * FROM absences
+                     WHERE employee_id = $1
+                       AND dat::text LIKE $2
+                     ORDER BY dat DESC`
+          const result = await pool.query(q, [employee_id, likeRef])
+          return result.rows
+        } else {
+          const result = await pool.query("SELECT * FROM absences WHERE employee_id = $1 ORDER BY created_date DESC", [
+            employee_id,
+          ])
+          return result.rows
+        }
       } catch (error) {
         console.error("Error fetching absences:", error)
         return []
       }
     },
-    retards: async (_: any, { employee_id }: { employee_id: string }) => {
+    retards: async (_: any, { employee_id, period }: { employee_id: string; period?: string }) => {
       try {
-        const result = await pool.query("SELECT * FROM retards WHERE employee_id = $1 ORDER BY created_date DESC", [
-          employee_id,
-        ])
-        return result.rows
+        if (period) {
+          const likeRef = `${period}%`
+
+          const q = `SELECT * FROM retards
+                     WHERE employee_id = $1
+                       AND dat::text LIKE $2
+                     ORDER BY dat DESC`
+          const result = await pool.query(q, [employee_id, likeRef])
+          return result.rows
+        } else {
+          const result = await pool.query("SELECT * FROM retards WHERE employee_id = $1 ORDER BY created_date DESC", [
+            employee_id,
+          ])
+          return result.rows
+        }
       } catch (error) {
         console.error("Error fetching retards:", error)
         return []
@@ -1254,90 +1341,130 @@ const resolvers = {
     // Batch mutation: save/update planning for multiple users
     createOrUpdateManyUserWorkSchedules: async (_: any, { users }: any) => {
       try {
-        if (!Array.isArray(users) || users.length === 0) throw new Error("users array required");
+        if (!Array.isArray(users) || users.length === 0) throw new Error("users array required")
         for (const user of users) {
-          const { employee_id, schedules } = user;
-          if (!employee_id || !Array.isArray(schedules) || schedules.length === 0) continue;
-          await resolvers.Mutation.createUserWorkSchedule(_, { employee_id, schedules });
+          const { employee_id, schedules } = user
+          if (!employee_id || !Array.isArray(schedules) || schedules.length === 0) continue
+          await resolvers.Mutation.createUserWorkSchedule(_, { employee_id, schedules })
         }
-        return true;
+        return true
       } catch (error) {
-        console.error("Error in createOrUpdateManyUserWorkSchedules:", error);
-        throw new Error("Failed to save/update many user work schedules");
+        console.error("Error in createOrUpdateManyUserWorkSchedules:", error)
+        throw new Error("Failed to save/update many user work schedules")
       }
     },
     // Enhanced mutation: Save full plan in per-user table, only current week in work_schedules
     createUserWorkSchedule: async (_: any, args: any) => {
       // args: { employee_id, schedules: [ {date, start_time, end_time, ...} ] }
       try {
-        const { employee_id, schedules } = args;
+        const { employee_id, schedules } = args
         if (!Array.isArray(schedules) || schedules.length === 0) {
-          throw new Error("schedules array required");
+          throw new Error("schedules array required")
         }
-        const tableName = await getUserTableName(employee_id);
-        // Save all days to per-user table
-        // 1. Save all days to per-user table (full planning)
+        const tableName = await getUserTableName(employee_id)
+
         for (const sched of schedules) {
-          const { date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status } = sched;
-          let validLocationId = null;
-          // Always use 'Repos' as shift_type for rest days
-          const finalShiftType = shift_type === 'Repos' || shift_type === '0' ? 'Repos' : shift_type;
+          const { date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status } =
+            sched
+          let validLocationId = null
+          const finalShiftType = shift_type === "Repos" || shift_type === "0" ? "Repos" : shift_type
           if (location_id && location_id !== 0 && finalShiftType !== "Repos") {
-            const locationCheck = await pool.query("SELECT id FROM locations WHERE id = $1", [location_id]);
-            if (locationCheck.rows.length > 0) validLocationId = location_id;
+            const locationCheck = await pool.query("SELECT id FROM locations WHERE id = $1", [location_id])
+            if (locationCheck.rows.length > 0) validLocationId = location_id
           }
           try {
             await pool.query(
               `INSERT INTO "${tableName}" (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                ON CONFLICT (date) DO UPDATE SET start_time = $3, end_time = $4, shift_type = $5, job_position = $6, is_working = $7, location_id = $8, day = $9, retard = $10, status = $11`,
-              [employee_id, date, start_time, end_time, finalShiftType, job_position, is_working, validLocationId, day, retard, status]
-            );
+              [
+                employee_id,
+                date,
+                start_time,
+                end_time,
+                finalShiftType,
+                job_position,
+                is_working,
+                validLocationId,
+                day,
+                retard,
+                status,
+              ],
+            )
           } catch (error) {
-            console.error("Error saving to per-user table:", error);
+            console.error("Error saving to per-user table:", error)
           }
         }
 
-        // 2. Save only the current week (7 days) to work_schedules (shared table)
-        //    First, clear all existing rows for this user for the current week (to avoid duplicates)
-        const now = new Date();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
-        weekStart.setHours(0, 0, 0, 0);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6); // Sunday
-        weekEnd.setHours(23, 59, 59, 999);
+        // Clear existing template for this employee
+        await pool.query(`DELETE FROM work_schedules WHERE employee_id = $1`, [employee_id])
 
-        // Remove all this user's work_schedules for the current week
-        await pool.query(
-          `DELETE FROM work_schedules WHERE employee_id = $1 AND date >= $2 AND date <= $3`,
-          [employee_id, weekStart.toISOString().slice(0, 10), weekEnd.toISOString().slice(0, 10)]
-        );
+        // Create 7 template days using the weekly pattern from the schedules
+        const weeklyPattern = {}
+        const daysOfWeek = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
-        // Insert only the 7 days of the current week
+        // Extract weekly pattern from the provided schedules
         for (const sched of schedules) {
-          const schedDate = new Date(sched.date);
-          schedDate.setHours(0, 0, 0, 0);
-          if (schedDate >= weekStart && schedDate <= weekEnd) {
-            try {
-              // Always use 'Repos' as shift_type for rest days
-              const wsShiftType = sched.shift_type === 'Repos' || sched.shift_type === '0' ? 'Repos' : sched.shift_type;
-              const wsLocationId = wsShiftType === 'Repos' || sched.location_id === '0' ? null : sched.location_id;
-              await pool.query(
-                `INSERT INTO work_schedules (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                 ON CONFLICT (employee_id, date) DO UPDATE SET start_time = $3, end_time = $4, shift_type = $5, job_position = $6, is_working = $7, location_id = $8, day = $9, retard = $10, status = $11`,
-                [employee_id, sched.date, sched.start_time, sched.end_time, wsShiftType, sched.job_position, sched.is_working, wsLocationId, sched.day, sched.retard, sched.status]
-              );
-            } catch (error) {
-              console.error("Error saving to work_schedules:", error);
+          const schedDate = new Date(sched.date)
+          const dayOfWeek = schedDate.getDay() // 0=Sunday, 1=Monday, etc.
+          const dayKey = daysOfWeek[(dayOfWeek + 6) % 7] // Convert to Monday=0 format
+
+          if (!weeklyPattern[dayKey]) {
+            weeklyPattern[dayKey] = {
+              shift_type: sched.shift_type === "Repos" || sched.shift_type === "0" ? "Repos" : sched.shift_type,
+              start_time: sched.start_time,
+              end_time: sched.end_time,
+              job_position: sched.job_position,
+              is_working: sched.is_working,
+              location_id: sched.shift_type === "Repos" || sched.location_id === "0" ? null : sched.location_id,
             }
           }
         }
-        return true;
+
+        // Insert 7 template days using placeholder dates (2024-01-01 = Monday)
+        const baseDate = new Date("2024-01-01") // This is a Monday
+        for (let i = 0; i < 7; i++) {
+          const templateDate = new Date(baseDate)
+          templateDate.setDate(baseDate.getDate() + i)
+          const dayKey = daysOfWeek[i]
+          const dayName = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]
+
+          const pattern = weeklyPattern[dayKey] || {
+            shift_type: "Repos",
+            start_time: null,
+            end_time: null,
+            job_position: "",
+            is_working: false,
+            location_id: null,
+          }
+
+          try {
+            await pool.query(
+              `INSERT INTO work_schedules (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+              [
+                employee_id,
+                templateDate.toISOString().slice(0, 10),
+                pattern.start_time,
+                pattern.end_time,
+                pattern.shift_type,
+                pattern.job_position,
+                pattern.is_working,
+                pattern.location_id,
+                dayName,
+                null,
+                "active",
+              ],
+            )
+          } catch (error) {
+            console.error("Error saving template day to work_schedules:", error)
+          }
+        }
+
+        return true
       } catch (error) {
-        console.error("Error in createUserWorkSchedule:", error);
-        throw new Error("Failed to create user work schedule");
+        console.error("Error in createUserWorkSchedule:", error)
+        throw new Error("Failed to create user work schedule")
       }
     },
     // Modified createWorkSchedule to use user tables
@@ -1345,9 +1472,9 @@ const resolvers = {
       try {
         return await resolvers.Mutation.createUserWorkSchedule(_, {
           ...args,
-          day: new Date(args.date).toLocaleDateString('en-US', { weekday: 'long' }),
+          day: new Date(args.date).toLocaleDateString("en-US", { weekday: "long" }),
           retard: null,
-          status: 'active'
+          status: "active",
         })
       } catch (error) {
         console.error("Error creating work schedule:", error)
@@ -1651,6 +1778,10 @@ const resolvers = {
         if (beforeRes.rows.length === 0) throw new Error("Employee not found")
         const before = beforeRes.rows[0]
 
+        if (updates.salaire !== undefined) {
+          updates.price_j = Math.round((updates.salaire / 30) * 100) / 100
+        }
+
         const fields = Object.keys(updates).filter((key) => updates[key] !== undefined)
         const values = fields.map((key) => updates[key])
         if (fields.length === 0) throw new Error("No fields to update")
@@ -1701,8 +1832,8 @@ const resolvers = {
               changes.push(`Restaurant: ${arrow(oldName, newName)}`)
               break
             }
-            case "price_h":
-              changes.push(`Prix/heure: ${arrow(fmtMoney(before.price_h), fmtMoney(employee.price_h))}`)
+            case "price_j":
+              changes.push(`Prix/jour: ${arrow(fmtMoney(before.price_j), fmtMoney(employee.price_j))}`)
               break
             default:
               changes.push(`${field}: ${arrow(String(before[field] ?? "—"), String(employee[field] ?? "—"))}`)
@@ -1736,28 +1867,32 @@ const resolvers = {
     updateWorkSchedule: async (_: any, { id, employee_id, ...updates }: any) => {
       try {
         // 1. Update per-user table (find by date)
-        if (!employee_id || !updates.date) throw new Error("employee_id and date required");
-        const tableName = await getUserTableName(employee_id);
-        const fields = Object.keys(updates).filter((key) => updates[key] !== undefined);
-        const values = fields.map((key) => updates[key]);
-        if (fields.length === 0) throw new Error("No fields to update");
-        const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(", ");
-        await pool.query(`UPDATE "${tableName}" SET ${setClause} WHERE date = $1`, [updates.date, ...values]);
+        if (!employee_id || !updates.date) throw new Error("employee_id and date required")
+        const tableName = await getUserTableName(employee_id)
+        const fields = Object.keys(updates).filter((key) => updates[key] !== undefined)
+        const values = fields.map((key) => updates[key])
+        if (fields.length === 0) throw new Error("No fields to update")
+        const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(", ")
+        await pool.query(`UPDATE "${tableName}" SET ${setClause} WHERE date = $1`, [updates.date, ...values])
         // 2. If date is in current week, update work_schedules
-        const now = new Date();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + 1);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        const schedDate = new Date(updates.date);
+        const now = new Date()
+        const weekStart = new Date(now)
+        weekStart.setDate(now.getDate() - now.getDay() + 1)
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekStart.getDate() + 6)
+        const schedDate = new Date(updates.date)
         if (schedDate >= weekStart && schedDate <= weekEnd) {
-          const setClauseWS = fields.map((field, idx) => `${field} = $${idx + 2}`).join(", ");
-          await pool.query(`UPDATE work_schedules SET ${setClauseWS} WHERE employee_id = $1 AND date = $2`, [employee_id, updates.date, ...values]);
+          const setClauseWS = fields.map((field, idx) => `${field} = $${idx + 2}`).join(", ")
+          await pool.query(`UPDATE work_schedules SET ${setClauseWS} WHERE employee_id = $1 AND date = $2`, [
+            employee_id,
+            updates.date,
+            ...values,
+          ])
         }
-        return true;
+        return true
       } catch (error) {
-        console.error("Error updating work schedule:", error);
-        throw new Error("Failed to update work schedule");
+        console.error("Error updating work schedule:", error)
+        throw new Error("Failed to update work schedule")
       }
     },
     createLeaveRequest: async (_: any, args: any) => {
@@ -1845,10 +1980,13 @@ const resolvers = {
     },
     createEmployee: async (_: any, args: any) => {
       try {
-        const { username, email, nom, prenom, telephone, job_title, salaire, role, location_id, price_h } = args
+        const { username, email, nom, prenom, telephone, job_title, salaire, role, location_id } = args
+
+        const price_j = salaire ? Math.round((salaire / 30) * 100) / 100 : 0
+
         const employeeResult = await pool.query(
-          "INSERT INTO employees (nom, prenom, email, telephone, job_title, salaire, location_id, status, price_h) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8) RETURNING *",
-          [nom, prenom, email, telephone, job_title, salaire || 0, location_id, price_h ?? 0],
+          "INSERT INTO employees (nom, prenom, email, telephone, job_title, salaire, location_id, status, price_j) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8) RETURNING *",
+          [nom, prenom, email, telephone, job_title, salaire || 0, location_id, price_j],
         )
         const employee = employeeResult.rows[0]
 
@@ -1927,56 +2065,103 @@ const resolvers = {
       try {
         const { start, end } = firstAndLastDateOfMonth(period)
 
-        const hoursRes = await pool.query(
-          `
-        SELECT COALESCE(SUM(total_hours), 0) AS hours_worked
-        FROM time_entries
-        WHERE employee_id = $1
-          AND status = 'completed'
-          AND date BETWEEN $2 AND $3
-      `,
-          [employee_id, start, end],
+        // 1) Compute days worked from per-user table using is_worked and shift_type multipliers
+        let days_worked = 0
+        try {
+          const tableName = await getUserTableName(employee_id)
+          const workedRes = await pool.query(
+            `SELECT shift_type, COUNT(*) AS cnt
+             FROM "${tableName}"
+             WHERE employee_id = $1
+               AND is_worked = true
+               AND date BETWEEN $2 AND $3
+             GROUP BY shift_type`,
+            [employee_id, start, end],
+          )
+          for (const row of workedRes.rows) {
+            const count = Number(row.cnt) || 0
+            if (row.shift_type === 'Doublage') days_worked += count * 2
+            else if (row.shift_type === 'Matin' || row.shift_type === 'Soirée') days_worked += count * 1
+          }
+        } catch (err) {
+          // Fallback: use shared work_schedules if per-user table is unavailable
+          const workSchedulesRes = await pool.query(
+            `SELECT shift_type, COUNT(*) as cnt
+             FROM work_schedules
+             WHERE employee_id = $1 AND is_working = true AND date BETWEEN $2 AND $3
+             GROUP BY shift_type`,
+            [employee_id, start, end],
+          )
+          for (const row of workSchedulesRes.rows) {
+            const count = Number(row.cnt) || 0
+            if (row.shift_type === 'Doublage') days_worked += count * 2
+            else if (row.shift_type === 'Matin' || row.shift_type === 'Soirée') days_worked += count * 1
+          }
+        }
+
+        // 2) Get base finance fields
+        const employeeRes = await pool.query(
+          `SELECT price_j, prime, avance, nom, prenom, email FROM employees WHERE id = $1`,
+          [employee_id],
         )
-        const hours_worked = Number(hoursRes.rows[0]?.hours_worked ?? 0)
+        const employee = employeeRes.rows[0] || {}
+        const price_j = Number(employee.price_j ?? 0)
+        const prime = Number(employee.prime ?? 0)
+        const avance = Number(employee.avance ?? 0)
 
-        const rateRes = await pool.query("SELECT price_h, nom, prenom, email FROM employees WHERE id = $1", [
-          employee_id,
-        ])
-        const price_h = Number(rateRes.rows[0]?.price_h ?? 0)
-        const amount = Math.round(hours_worked * price_h * 100) / 100
+        // 3) Sum disciplinary deductions for the month from individual tables (sum of price)
+        // Use created_date for monthly filter; fallback to 0 if none
+        const likeRef = `${period}%`
+        const sumPrices = async (table: string) => {
+          const r = await pool.query(
+            `SELECT COALESCE(SUM(price), 0) AS total
+             FROM ${table}
+             WHERE employee_id = $1
+               AND dat::text LIKE $2`,
+            [employee_id, likeRef],
+          )
+          return Number(r.rows[0]?.total ?? 0)
+        }
+        const absPrice = await sumPrices('absences')
+        const infPrice = await sumPrices('infractions')
+        const retPrice = await sumPrices('retards')
+        const totalDeductions = absPrice + infPrice + retPrice
+        // 4) Compute amount: prime + (price_j * days_worked) - avance - deductions
+        const grossAmount = prime + price_j * days_worked
+        const amount = Math.max(0, Math.round((grossAmount - avance - totalDeductions) * 100) / 100)
 
+        // 5) Upsert payroll record (store days in hours_worked column for compatibility)
         const upsert = await pool.query(
           `INSERT INTO payroll_payments (employee_id, period, paid, paid_at, amount, hours_worked)
-         VALUES ($1, $2, true, NOW(), $3, $4)
-         ON CONFLICT (employee_id, period)
-         DO UPDATE SET paid = EXCLUDED.paid,
-                       paid_at = EXCLUDED.paid_at,
-                       amount = EXCLUDED.amount,
-                       hours_worked = EXCLUDED.hours_worked
-         RETURNING id, employee_id, period, paid, paid_at, amount, hours_worked`,
-          [employee_id, period, amount, hours_worked],
+           VALUES ($1, $2, true, NOW(), $3, $4)
+           ON CONFLICT (employee_id, period)
+           DO UPDATE SET paid = EXCLUDED.paid,
+                         paid_at = EXCLUDED.paid_at,
+                         amount = EXCLUDED.amount,
+                         hours_worked = EXCLUDED.hours_worked
+           RETURNING id, employee_id, period, paid, paid_at, amount, hours_worked`,
+          [employee_id, period, amount, days_worked],
         )
 
-        await pool.query("UPDATE employees SET prime = NULL, avance = NULL WHERE id = $1", [employee_id])
+        // Optionally reset prime/avance after payment
+        await pool.query(`UPDATE employees SET prime = NULL, avance = NULL WHERE id = $1`, [employee_id])
 
         try {
-          const e = rateRes.rows[0]
+          const e = employee
           await logRecentActivity({
-            title: "Salaire payé",
-            description: `${e?.prenom ?? ""} ${e?.nom ?? ""} — Période ${period} • ${hours_worked.toFixed(
-              2,
-            )}h × ${fmtMoney(price_h)} = ${fmtMoney(amount)}`,
-            type: "finance",
+            title: 'Salaire payé',
+            description: `${e?.prenom ?? ''} ${e?.nom ?? ''} — Période ${period} • ${days_worked} jours × ${fmtMoney(price_j)} + prime ${fmtMoney(prime)} - avance ${fmtMoney(avance)} - déductions ${Math.round(totalDeductions * 100) / 100} = ${fmtMoney(amount)}`,
+            type: 'finance',
             urgent: false,
           })
-        } catch (e) {
-          console.error("Failed to log payment activity:", e)
+        } catch (err) {
+          console.error('Failed to log payment activity:', err)
         }
 
         return upsert.rows[0]
       } catch (e) {
-        console.error("Error in paySalary:", e)
-        throw new Error("Failed to mark salary as paid")
+        console.error('Error in paySalary:', e)
+        throw new Error('Failed to mark salary as paid')
       }
     },
     markNotificationSeen: async (_: any, { id }: { id: string }) => {
@@ -2162,17 +2347,31 @@ const resolvers = {
 
     createInfraction: async (_: any, args: any) => {
       try {
-        const { employee_id, name, description, price } = args;
+        const { employee_id, name, description, price, dat } = args
+        let formattedDate = dat
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            // Numeric timestamp
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            // Parse dd/MM/yyyy to yyyy-MM-dd for Postgres
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          const now = new Date()
+          formattedDate = now.toISOString().slice(0, 10)
+        }
+
         const result = await pool.query(
-          "INSERT INTO infractions (employee_id, name, description, price) VALUES ($1, $2, $3, $4) RETURNING *",
-          [employee_id, name, description, price],
-        );
+          "INSERT INTO infractions (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+          [employee_id, name, description, price, formattedDate],
+        )
         // Subtract price from employee's salary
-        await pool.query(
-          "UPDATE employees SET salaire = salaire - $1 WHERE id = $2",
-          [price, employee_id]
-        );
-        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id]);
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
         if (userResult.rows.length > 0) {
           await createNotification({
             user_id: userResult.rows[0].id,
@@ -2181,43 +2380,57 @@ const resolvers = {
             message: `Une infraction \"${name}\" a été ajoutée à votre dossier. Montant: ${price} DT`,
             type: "infraction",
             reference_id: result.rows[0].id,
-          });
+          })
         }
-        return result.rows[0];
+        return result.rows[0]
       } catch (error) {
-        console.error("Error creating infraction:", error);
-        throw new Error("Failed to create infraction");
+        console.error("Error creating infraction:", error)
+        throw new Error("Failed to create infraction")
       }
     },
 
     deleteInfraction: async (_: any, { id }: { id: number }) => {
       try {
         // Get price and employee_id before delete
-        const res = await pool.query("SELECT price, employee_id FROM infractions WHERE id = $1", [id]);
-        if (!res.rows.length) throw new Error("Infraction not found");
-        const { price, employee_id } = res.rows[0];
-        await pool.query("DELETE FROM infractions WHERE id = $1", [id]);
+        const res = await pool.query("SELECT price, employee_id FROM infractions WHERE id = $1", [id])
+        if (!res.rows.length) throw new Error("Infraction not found")
+        await pool.query("DELETE FROM infractions WHERE id = $1", [id])
         // Add price back to employee's salary
-        await pool.query("UPDATE employees SET salaire = salaire + $1 WHERE id = $2", [price, employee_id]);
-        return true;
+        return true
       } catch (error) {
-        console.error("Error deleting infraction:", error);
-        throw new Error("Failed to delete infraction");
+        console.error("Error deleting infraction:", error)
+        throw new Error("Failed to delete infraction")
       }
     },
     createAbsence: async (_: any, args: any) => {
       try {
-        const { employee_id, name, description, price } = args;
+        const { employee_id, name, description, price, dat } = args
+        let formattedDate = dat
+        console.log("Received date:", dat)
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            // Numeric timestamp
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            // Parse dd/MM/yyyy to yyyy-MM-dd for Postgres
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          const now = new Date()
+          formattedDate = now.toISOString().slice(0, 10)
+        }
+
         const result = await pool.query(
-          "INSERT INTO absences (employee_id, name, description, price) VALUES ($1, $2, $3, $4) RETURNING *",
-          [employee_id, name, description, price],
-        );
+          "INSERT INTO absences (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+          [employee_id, name, description, price, formattedDate],
+        )
+        console.log("saveddate", formattedDate)
         // Subtract price from employee's salary
-        await pool.query(
-          "UPDATE employees SET salaire = salaire - $1 WHERE id = $2",
-          [price, employee_id]
-        );
-        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id]);
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
         if (userResult.rows.length > 0) {
           await createNotification({
             user_id: userResult.rows[0].id,
@@ -2226,40 +2439,52 @@ const resolvers = {
             message: `Une absence \"${name}\" a été enregistrée. Montant: ${price} DT`,
             type: "absence",
             reference_id: result.rows[0].id,
-          });
+          })
         }
-        return result.rows[0];
+        return result.rows[0]
       } catch (error) {
-        console.error("Error creating absence:", error);
-        throw new Error("Failed to create absence");
+        console.error("Error creating absence:", error)
+        throw new Error("Failed to create absence")
       }
     },
 
     deleteAbsence: async (_: any, { id }: { id: number }) => {
       try {
-        const res = await pool.query("SELECT price, employee_id FROM absences WHERE id = $1", [id]);
-        if (!res.rows.length) throw new Error("Absence not found");
-        const { price, employee_id } = res.rows[0];
-        await pool.query("DELETE FROM absences WHERE id = $1", [id]);
-        await pool.query("UPDATE employees SET salaire = salaire + $1 WHERE id = $2", [price, employee_id]);
-        return true;
+        const res = await pool.query("SELECT price, employee_id FROM absences WHERE id = $1", [id])
+        if (!res.rows.length) throw new Error("Absence not found")
+        await pool.query("DELETE FROM absences WHERE id = $1", [id])
+        return true
       } catch (error) {
-        console.error("Error deleting absence:", error);
-        throw new Error("Failed to delete absence");
+        console.error("Error deleting absence:", error)
+        throw new Error("Failed to delete absence")
       }
     },
     createRetard: async (_: any, args: any) => {
       try {
-        const { employee_id, name, description, price } = args;
+        const { employee_id, name, description, price, dat } = args
+        let formattedDate = dat
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            // Numeric timestamp
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            // Parse dd/MM/yyyy to yyyy-MM-dd for Postgres
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          const now = new Date()
+          formattedDate = now.toISOString().slice(0, 10)
+        }
+
         const result = await pool.query(
-          "INSERT INTO retards (employee_id, name, description, price) VALUES ($1, $2, $3, $4) RETURNING *",
-          [employee_id, name, description, price],
-        );
-        await pool.query(
-          "UPDATE employees SET salaire = salaire - $1 WHERE id = $2",
-          [price, employee_id]
-        );
-        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id]);
+          "INSERT INTO retards (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+          [employee_id, name, description, price, formattedDate],
+        )
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
         if (userResult.rows.length > 0) {
           await createNotification({
             user_id: userResult.rows[0].id,
@@ -2268,40 +2493,34 @@ const resolvers = {
             message: `Un retard \"${name}\" a été enregistré. Montant: ${price} DT`,
             type: "retard",
             reference_id: result.rows[0].id,
-          });
+          })
         }
-        return result.rows[0];
+        return result.rows[0]
       } catch (error) {
-        console.error("Error creating retard:", error);
-        throw new Error("Failed to create retard");
+        console.error("Error creating retard:", error)
+        throw new Error("Failed to create retard")
       }
     },
 
     deleteRetard: async (_: any, { id }: { id: number }) => {
       try {
-        const res = await pool.query("SELECT price, employee_id FROM retards WHERE id = $1", [id]);
-        if (!res.rows.length) throw new Error("Retard not found");
-        const { price, employee_id } = res.rows[0];
-        await pool.query("DELETE FROM retards WHERE id = $1", [id]);
-        await pool.query("UPDATE employees SET salaire = salaire + $1 WHERE id = $2", [price, employee_id]);
-        return true;
+        const res = await pool.query("SELECT price, employee_id FROM retards WHERE id = $1", [id])
+        if (!res.rows.length) throw new Error("Retard not found")
+        await pool.query("DELETE FROM retards WHERE id = $1", [id])
+        return true
       } catch (error) {
-        console.error("Error deleting retard:", error);
-        throw new Error("Failed to delete retard");
+        console.error("Error deleting retard:", error)
+        throw new Error("Failed to delete retard")
       }
     },
     createTenueTravail: async (_: any, args: any) => {
       try {
-        const { employee_id, name, description, price } = args;
+        const { employee_id, name, description, price } = args
         const result = await pool.query(
           "INSERT INTO tenues_de_travail (employee_id, name, description, price) VALUES ($1, $2, $3, $4) RETURNING *",
           [employee_id, name, description, price],
-        );
-        await pool.query(
-          "UPDATE employees SET salaire = salaire - $1 WHERE id = $2",
-          [price, employee_id]
-        );
-        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id]);
+        )
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
         if (userResult.rows.length > 0) {
           await createNotification({
             user_id: userResult.rows[0].id,
@@ -2310,26 +2529,24 @@ const resolvers = {
             message: `Une note sur la tenue de travail \"${name}\" a été ajoutée. Montant: ${price} DT`,
             type: "tenue_travail",
             reference_id: result.rows[0].id,
-          });
+          })
         }
-        return result.rows[0];
+        return result.rows[0]
       } catch (error) {
-        console.error("Error creating tenue de travail:", error);
-        throw new Error("Failed to create tenue de travail");
+        console.error("Error creating tenue de travail:", error)
+        throw new Error("Failed to create tenue de travail")
       }
     },
 
     deleteTenueTravail: async (_: any, { id }: { id: number }) => {
       try {
-        const res = await pool.query("SELECT price, employee_id FROM tenues_de_travail WHERE id = $1", [id]);
-        if (!res.rows.length) throw new Error("Tenue de travail not found");
-        const { price, employee_id } = res.rows[0];
-        await pool.query("DELETE FROM tenues_de_travail WHERE id = $1", [id]);
-        await pool.query("UPDATE employees SET salaire = salaire + $1 WHERE id = $2", [price, employee_id]);
-        return true;
+        const res = await pool.query("SELECT price, employee_id FROM tenues_de_travail WHERE id = $1", [id])
+        if (!res.rows.length) throw new Error("Tenue de travail not found")
+        await pool.query("DELETE FROM tenues_de_travail WHERE id = $1", [id])
+        return true
       } catch (error) {
-        console.error("Error deleting tenue de travail:", error);
-        throw new Error("Failed to delete tenue de travail");
+        console.error("Error deleting tenue de travail:", error)
+        throw new Error("Failed to delete tenue de travail")
       }
     },
   },

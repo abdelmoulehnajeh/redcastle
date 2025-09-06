@@ -14,8 +14,10 @@ import {
   GET_WORK_SCHEDULES,
   CREATE_MANAGER_WORK_SCHEDULE,
   SEND_APPROVAL_REQUEST,
+  GET_LOCATIONS,
 } from "@/lib/graphql-queries"
 import { useLang, type Lang } from "@/lib/i18n"
+import { useAuth } from "@/lib/auth-context"
 
 /* i18n */
 
@@ -192,15 +194,12 @@ export default function ManagerJournalPage() {
   const t = translations[lang]
   const align = lang === "ar" ? "text-right" : "text-left"
   const { toast } = useToast()
-
-  // Assume manager's restaurant is known (replace with actual logic if needed)
-  const managerRestaurant = "Red Castle lauina"
+  const { user } = useAuth()
 
   const [selectedEmployee, setSelectedEmployee] = useState("")
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [jobPosition, setJobPosition] = useState("")
 
-  // Localized days of the current week
   const daysOfWeek = useMemo(
     () =>
       [
@@ -215,7 +214,6 @@ export default function ManagerJournalPage() {
     [t],
   )
 
-  // Localized shift labels, values fixed (FR) for backend
   const shifts = useMemo(
     () => [
       { value: SHIFT_VALUE_MORNING, label: t.shiftMorningLabel },
@@ -226,10 +224,15 @@ export default function ManagerJournalPage() {
     [t],
   )
 
-  // GraphQL queries
+  const { data: locationsData } = useQuery(GET_LOCATIONS)
+
+  const managerLocation = useMemo(() => {
+    if (!locationsData?.locations || !user?.location_id) return null
+    return locationsData.locations.find((loc: any) => loc.id === user.location_id)
+  }, [locationsData, user?.location_id])
+
   const { data: employeesData, error: employeesError, loading: employeesLoading } = useQuery(GET_EMPLOYEES)
 
-  // Fetch all schedules (admin-like view) to render the weekly grid
   const {
     data: schedulesData,
     error: schedulesError,
@@ -247,11 +250,9 @@ export default function ManagerJournalPage() {
     return t.shiftOffName
   }
 
-  // Helper: get the shift for an employee and day from schedulesData
   function getEmployeeSchedule(employeeId: string, dayKey: DayKey) {
     if (!schedulesData?.workSchedules) return null
 
-    // Compute target date for this day in current week (Monday start)
     const today = new Date()
     const dayIndex = daysOfWeek.findIndex((d) => d.key === dayKey)
     const monday = new Date(today)
@@ -282,7 +283,23 @@ export default function ManagerJournalPage() {
     handleScheduleChange(day, value)
   }
 
-  const selectedEmployeeData = employeesData?.employees.find((emp: any) => emp.id === selectedEmployee)
+  const employees = useMemo(() => {
+    if (!employeesData?.employees || !managerLocation) return []
+
+    return employeesData.employees
+      .filter((emp: any) => emp.location?.id === managerLocation.id)
+      .map((emp: any) => ({
+        id: emp.id,
+        name: `${emp.prenom} ${emp.nom}`,
+        position: emp.job_title,
+        job_title: emp.job_title,
+        prenom: emp.prenom,
+        nom: emp.nom,
+        location: emp.location?.name || "",
+      }))
+  }, [employeesData, managerLocation])
+
+  const selectedEmployeeData = employees.find((emp: any) => emp.id === selectedEmployee)
 
   async function proposeSchedule() {
     if (!selectedEmployee) {
@@ -294,14 +311,21 @@ export default function ManagerJournalPage() {
       return
     }
 
+    if (!user?.username) {
+      toast({
+        title: t.toastErrorTitle,
+        description: "Manager information not available",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
-      // Create entries for each selected day
       const createdSchedules = await Promise.all(
         daysOfWeek.map(async (day) => {
           const shift = schedule[day.key]
           if (!shift) return null
 
-          // Compose the date for this week
           const today = new Date()
           const dayIndex = daysOfWeek.findIndex((d) => d.key === day.key)
           const monday = new Date(today)
@@ -310,7 +334,6 @@ export default function ManagerJournalPage() {
           date.setDate(monday.getDate() + dayIndex)
           const dateString = date.toISOString().split("T")[0]
 
-          // Default start/end times per shift (match labels)
           let start_time: string | null = null
           let end_time: string | null = null
           if (shift === SHIFT_VALUE_MORNING) {
@@ -322,17 +345,19 @@ export default function ManagerJournalPage() {
           } else if (shift === SHIFT_VALUE_DOUBLE) {
             start_time = "09:00"
             end_time = "03:00"
-          } // Repos -> keep nulls
+          }
 
           const result = await createManagerSchedule({
             variables: {
               employee_id: selectedEmployee,
               date: dateString,
-              shift_type: shift, // Important: keep backend value in FR
+              shift_type: shift,
               job_position: selectedEmployeeData?.job_title || "",
               is_working: shift !== SHIFT_VALUE_OFF,
               start_time,
               end_time,
+              status: "manager",
+              trait: "manager",
             },
           })
 
@@ -346,8 +371,15 @@ export default function ManagerJournalPage() {
         variables: {
           type: "schedule_change",
           reference_id,
-          manager_id: selectedEmployee,
-          data: JSON.stringify(schedule),
+          manager_id: user.id,
+          data: JSON.stringify({
+            schedule,
+            employee_id: selectedEmployee,
+            employee_name: selectedEmployeeData?.name,
+            manager_username: user.username,
+            tableName: `${user.username.toLowerCase()}_manager_${selectedEmployee}`,
+            location: managerLocation?.name,
+          }),
         },
       })
 
@@ -368,7 +400,6 @@ export default function ManagerJournalPage() {
     }
   }
 
-  // Utility: get localized date string for a day cell in the editor
   function dayDateString(dayKey: DayKey) {
     const today = new Date()
     const dayIndex = daysOfWeek.findIndex((d) => d.key === dayKey)
@@ -379,7 +410,6 @@ export default function ManagerJournalPage() {
     return formatDate(date, { year: "numeric", month: "2-digit", day: "2-digit" })
   }
 
-  // Loading / Error states (localized)
   if (employeesError || schedulesError) {
     return (
       <div className="p-8 text-center text-red-600">
@@ -402,7 +432,6 @@ export default function ManagerJournalPage() {
     )
   }
 
-  // Defensive: If API returns undefined/null, show error
   if (!employeesData?.employees) {
     return (
       <div className="p-8 text-center text-red-600">
@@ -414,22 +443,19 @@ export default function ManagerJournalPage() {
     )
   }
 
-  // Employees mapped and filtered by manager's restaurant
-  const employees = employeesData.employees.map((emp: any) => ({
-    id: emp.id,
-    name: `${emp.prenom} ${emp.nom}`,
-    position: emp.job_title,
-    job_title: emp.job_title,
-    prenom: emp.prenom,
-    nom: emp.nom,
-    location: emp.location?.name || "",
-  }))
-
-  const filteredEmployees = employees.filter((emp: any) => emp.location === managerRestaurant)
+  if (employees.length === 0) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        <h2 className="text-white/90 font-semibold mb-1" dir="auto">
+          Aucun employé trouvé
+        </h2>
+        <p dir="auto">Aucun employé n'est assigné à votre restaurant ({managerLocation?.name || "Non défini"})</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden animate-fade-in">
-      {/* Floating particles background (absolute, so sidebar stays visible) */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-900/80 via-blue-900/60 to-slate-900/80 backdrop-blur-[6px]" />
         {[...Array(20)].map((_, i) => (
@@ -447,7 +473,6 @@ export default function ManagerJournalPage() {
       </div>
 
       <div className="space-y-8 p-3 sm:p-4 lg:p-6 relative z-20 max-w-screen-xl mx-auto">
-        {/* Header */}
         <div className="glass-card backdrop-blur-futuristic p-4 sm:p-6 lg:p-8 text-white shadow-2xl animate-fade-in relative overflow-hidden border border-white/10">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-900/30 via-green-900/40 to-blue-900/30 opacity-70 rounded-2xl" />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] animate-[shimmer_3s_ease-in-out_infinite] rounded-2xl" />
@@ -465,11 +490,13 @@ export default function ManagerJournalPage() {
               <p className="text-slate-200 text-sm md:text-base" dir="auto">
                 {t.headerSubtitle}
               </p>
+              <p className="text-blue-300 text-xs mt-1" dir="auto">
+                Restaurant: {managerLocation?.name || "Non défini"}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Weekly Schedule Table */}
         <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-blue-900/60 to-slate-900/70">
           <CardHeader>
             <CardTitle className="text-white" dir="auto">
@@ -495,7 +522,7 @@ export default function ManagerJournalPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEmployees.map((employee: any) => (
+                  {employees.map((employee: any) => (
                     <tr key={employee.id} className="border-b border-white/10 hover:bg-blue-900/30">
                       <td className="p-3">
                         <div className="flex items-center gap-3">
@@ -556,7 +583,6 @@ export default function ManagerJournalPage() {
           </CardContent>
         </Card>
 
-        {/* Employee Selection Grid */}
         <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-blue-900/60 to-slate-900/70">
           <CardHeader>
             <CardTitle className="flex items-center text-white" dir="auto">
@@ -569,7 +595,7 @@ export default function ManagerJournalPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredEmployees.map((employee: any) => (
+              {employees.map((employee: any) => (
                 <div
                   key={employee.id}
                   className={`border border-white/10 rounded-xl p-4 cursor-pointer transition-colors glass-card bg-gradient-to-br from-blue-900/40 to-green-900/40 ${
@@ -599,7 +625,6 @@ export default function ManagerJournalPage() {
           </CardContent>
         </Card>
 
-        {/* Schedule Editor */}
         {selectedEmployeeData && (
           <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-blue-900/60 to-slate-900/70">
             <CardHeader>
@@ -612,7 +637,6 @@ export default function ManagerJournalPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Job Position Selector */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-1 text-white" dir="auto">
                   {t.positionForWeek}

@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, X } from "lucide-react"
+import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, X, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useQuery, useMutation, useLazyQuery } from "@apollo/client"
 import {
@@ -19,7 +19,9 @@ import {
   CREATE_USER_WORK_SCHEDULE,
   UPDATE_WORK_SCHEDULE,
   NOTIFY_PLANNING_FOR_EMPLOYEE,
+  GET_WEEKLY_TEMPLATE_SCHEDULES,
 } from "@/lib/graphql-queries"
+import { Input } from "@/components/ui/input"
 
 type Lang = "fr" | "ar"
 
@@ -277,7 +279,7 @@ type DayAssignment = {
 }
 
 function getAbbrev(name: string | undefined | null, max = 3) {
-  if (!name || typeof name !== "string" || !name.trim()) return "";
+  if (!name || typeof name !== "string" || !name.trim()) return ""
   const parts = name.trim().split(/\s+/)
   const letters = parts.map((p) => p[0]?.toUpperCase()).join("")
   const abbr = letters || name.slice(0, max).toUpperCase()
@@ -296,6 +298,9 @@ export default function AdminJournalPage() {
   const [selectedLocation, setSelectedLocation] = useState("")
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [jobPosition, setJobPosition] = useState("")
+  // Filters
+  const [searchTerm, setSearchTerm] = useState("")
+  const [locationFilter, setLocationFilter] = useState("all")
 
   // New: monthly planner
   const [plannerOpen, setPlannerOpen] = useState(false)
@@ -334,13 +339,13 @@ export default function AdminJournalPage() {
     errorPolicy: "all",
   })
   // Fetch all per-user schedules for all employees for the current week
-  const today = new Date();
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay() + 1);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  const weekStartStr = weekStart.toISOString().slice(0, 10);
-  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+  const today = new Date()
+  const weekStart = new Date(today)
+  weekStart.setDate(today.getDate() - today.getDay() + 1)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  const weekStartStr = weekStart.toISOString().slice(0, 10)
+  const weekEndStr = weekEnd.toISOString().slice(0, 10)
   const {
     data: allSchedulesData,
     error: allSchedulesError,
@@ -350,11 +355,21 @@ export default function AdminJournalPage() {
     variables: { start: weekStartStr, end: weekEndStr },
     fetchPolicy: "cache-first",
     errorPolicy: "all",
-  });
+  })
   const [getRange, { data: rangeData }] = useLazyQuery(GET_WORK_SCHEDULES_RANGE)
   const [createUserSchedule] = useMutation(CREATE_USER_WORK_SCHEDULE) // Updated mutation
   const [updateSchedule] = useMutation(UPDATE_WORK_SCHEDULE)
   const [notifyPlanning] = useMutation(NOTIFY_PLANNING_FOR_EMPLOYEE)
+
+  const {
+    data: weeklyTemplateData,
+    error: weeklyTemplateError,
+    loading: weeklyTemplateLoading,
+    refetch: refetchWeeklyTemplate,
+  } = useQuery(GET_WEEKLY_TEMPLATE_SCHEDULES, {
+    fetchPolicy: "cache-first",
+    errorPolicy: "all",
+  })
 
   const allLocationsList = useMemo(() => {
     return (locationsData?.locations ?? []).map((l: any) => ({
@@ -413,11 +428,23 @@ export default function AdminJournalPage() {
     [employees],
   )
   const filteredEmployees = useMemo(
-    () =>
-      selectedLocation && selectedLocation !== "all"
-        ? employees.filter((emp: any) => emp.location === selectedLocation)
-        : employees,
-    [employees, selectedLocation],
+    () => {
+      let filtered = employees
+      if (locationFilter && locationFilter !== "all") {
+        filtered = filtered.filter((emp: any) => emp.locationObj?.id === locationFilter)
+      }
+      if (searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase()
+        filtered = filtered.filter((emp: any) =>
+          emp.name.toLowerCase().includes(term) ||
+          emp.position?.toLowerCase().includes(term) ||
+          emp.prenom?.toLowerCase().includes(term) ||
+          emp.nom?.toLowerCase().includes(term)
+        )
+      }
+      return filtered
+    },
+    [employees, locationFilter, searchTerm],
   )
 
   const selectedEmployeeData = useMemo(
@@ -428,33 +455,24 @@ export default function AdminJournalPage() {
   // Helper: get the shift for an employee and day from allSchedulesData (array version)
   // Fix: Always match planning to the correct employee (employee.id === schedule.employee_id)
   function getEmployeeSchedule(employeeId: string, dayKey: string) {
-    // Defensive: always use employee_id for matching, never user id
-    if (!allSchedulesData?.allUserWorkSchedules) return null;
-    // Find the correct date for this dayKey in the current week
-    // weekStart is always Monday (see above)
-    const dayIndex = daysOfWeek.findIndex((d) => d.key === dayKey);
-    // If not found, return null
-    if (dayIndex === -1) return null;
-    // Calculate the date for this day in the current week
-    const date = new Date(weekStart);
-    date.setDate(weekStart.getDate() + dayIndex);
-    date.setHours(0, 0, 0, 0);
-    const dateStr = ymd(date); // Use ymd for consistent formatting
-    // Find the schedule for this employee and this date
-    const sched = allSchedulesData.allUserWorkSchedules.find((s: any) => {
-      return String(s.employee_id) === String(employeeId) && normalizeDateKey(s.date) === dateStr;
-    });
+    if (!weeklyTemplateData?.weeklyTemplateSchedules) return null
+
+    // Find the schedule for this employee and this day of week
+    const sched = weeklyTemplateData.weeklyTemplateSchedules.find((s: any) => {
+      return String(s.employee_id) === String(employeeId) && s.day?.toLowerCase() === dayKey.toLowerCase()
+    })
+
     if (sched && String(sched.employee_id) !== String(employeeId)) {
-      // Defensive: never show planning for the wrong employee
-      return null;
+      return null
     }
+
     return sched
       ? {
           shift: sched.shift_type as string,
           job: sched.job_position as string,
           location_id: sched.location_id,
         }
-      : null;
+      : null
   }
 
   // ----- Monthly Planner logic -----
@@ -477,7 +495,7 @@ export default function AdminJournalPage() {
       const res = await getRange({ variables: { employee_id: targetEmployee, start, end } })
       const existing = (res.data?.workSchedulesRange ?? []) as any[]
       // DEBUG: Log all raw data coming from the DB for this employee/month
-     const prefilled: Record<string, DayAssignment> = {}
+      const prefilled: Record<string, DayAssignment> = {}
       existing.forEach((s: any) => {
         if (s?.date) {
           const key = normalizeDateKey(s.date)
@@ -552,47 +570,49 @@ export default function AdminJournalPage() {
 
       // Persist each day using the new user-specific mutation
       // Build schedules array
-      const schedules = entries.map(([dateKey, assign]) => {
-        const normalized = normalizeDateKey(dateKey)
-        if (!normalized) return null
-        let start_time = null
-        let end_time = null
-        let is_working = true
-        if (assign.shift === "Matin") {
-          start_time = "09:00"
-          end_time = "18:00"
-        } else if (assign.shift === "Soirée") {
-          start_time = "18:00"
-          end_time = "03:00"
-        } else if (assign.shift === "Doublage") {
-          start_time = "09:00"
-          end_time = "03:00"
-        } else {
-          start_time = null
-          end_time = null
-          is_working = false
-        }
-        const finalLocationId =
-          assign.shift === "Repos"
-            ? "0"
-            : assign.location_id && assign.location_id !== "0"
-              ? String(assign.location_id)
-              : String(defaultLocationId)
-        const dayName = new Date(normalized).toLocaleDateString('en-US', { weekday: 'long' })
-        return {
-          employee_id: String(selectedEmployee),
-          date: normalized,
-          start_time,
-          end_time,
-          shift_type: assign.shift,
-          job_position: jobPosition || selectedEmployeeData?.job_title || "",
-          is_working,
-          location_id: finalLocationId,
-          day: dayName,
-          retard: null,
-          status: 'active',
-        }
-      }).filter(Boolean)
+      const schedules = entries
+        .map(([dateKey, assign]) => {
+          const normalized = normalizeDateKey(dateKey)
+          if (!normalized) return null
+          let start_time = null
+          let end_time = null
+          let is_working = true
+          if (assign.shift === "Matin") {
+            start_time = "09:00"
+            end_time = "18:00"
+          } else if (assign.shift === "Soirée") {
+            start_time = "18:00"
+            end_time = "03:00"
+          } else if (assign.shift === "Doublage") {
+            start_time = "09:00"
+            end_time = "03:00"
+          } else {
+            start_time = null
+            end_time = null
+            is_working = false
+          }
+          const finalLocationId =
+            assign.shift === "Repos"
+              ? "0"
+              : assign.location_id && assign.location_id !== "0"
+                ? String(assign.location_id)
+                : String(defaultLocationId)
+          const dayName = new Date(normalized).toLocaleDateString("en-US", { weekday: "long" })
+          return {
+            employee_id: String(selectedEmployee),
+            date: normalized,
+            start_time,
+            end_time,
+            shift_type: assign.shift,
+            job_position: jobPosition || selectedEmployeeData?.job_title || "",
+            is_working,
+            location_id: finalLocationId,
+            day: dayName,
+            retard: null,
+            status: "noactive",
+          }
+        })
+        .filter(Boolean)
       await createUserSchedule({
         variables: {
           employee_id: selectedEmployee,
@@ -633,6 +653,242 @@ export default function AdminJournalPage() {
     }
   }
 
+  const applyToNextMonth = async () => {
+    if (!selectedEmployee || Object.keys(monthEdits).length === 0) {
+      toast({
+        title: t.errTitle,
+        description: "Veuillez sélectionner un employé et définir un planning pour le mois actuel",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setPlannerLoading(true)
+
+      // Get next month
+      const nextMonth = new Date(plannerMonth)
+      nextMonth.setMonth(nextMonth.getMonth() + 1)
+
+      const { first, last } = getMonthInfo(nextMonth)
+      const employeeData = selectedEmployeeData
+      const defaultLocationId = employeeData?.locationObj?.id || allLocationsList[0]?.id
+
+      if (!defaultLocationId) {
+        toast({
+          title: t.saveErrTitle,
+          description: "Aucun restaurant trouvé pour cet employé",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Apply current month pattern to next month
+      const schedules = []
+      for (let d = 1; d <= last.getDate(); d++) {
+        const date = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), d)
+        const dayOfWeek = date.getDay() // 0=Sunday, 1=Monday, etc.
+
+        // Find a matching day pattern from current month edits
+        const currentMonthPattern = Object.entries(monthEdits).find(([_, assign]) => {
+          const patternDate = new Date(_.split("-").map(Number))
+          return patternDate.getDay() === dayOfWeek
+        })
+
+        if (currentMonthPattern) {
+          const [_, assign] = currentMonthPattern
+          const dateStr = ymd(date)
+
+          let start_time = null
+          let end_time = null
+          let is_working = true
+
+          if (assign.shift === "Matin") {
+            start_time = "09:00"
+            end_time = "18:00"
+          } else if (assign.shift === "Soirée") {
+            start_time = "18:00"
+            end_time = "03:00"
+          } else if (assign.shift === "Doublage") {
+            start_time = "09:00"
+            end_time = "03:00"
+          } else {
+            start_time = null
+            end_time = null
+            is_working = false
+          }
+
+          const finalLocationId =
+            assign.shift === "Repos"
+              ? "0"
+              : assign.location_id && assign.location_id !== "0"
+                ? String(assign.location_id)
+                : String(defaultLocationId)
+
+          const dayName = date.toLocaleDateString("en-US", { weekday: "long" })
+
+          schedules.push({
+            employee_id: String(selectedEmployee),
+            date: dateStr,
+            start_time,
+            end_time,
+            shift_type: assign.shift,
+            job_position: jobPosition || selectedEmployeeData?.job_title || "",
+            is_working,
+            location_id: finalLocationId,
+            day: dayName,
+            retard: null,
+            status: "active",
+          })
+        }
+      }
+
+      if (schedules.length > 0) {
+        await createUserSchedule({
+          variables: {
+            employee_id: selectedEmployee,
+            schedules,
+          },
+        })
+
+        // Notify employee for next month
+        const ym = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`
+        await notifyPlanning({ variables: { employee_id: selectedEmployee, month: ym } })
+
+        toast({
+          title: "Succès",
+          description: `Planning appliqué au mois prochain (${nextMonth.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })})`,
+        })
+      }
+    } catch (error) {
+      console.error("Error applying to next month:", error)
+      toast({
+        title: t.saveErrTitle,
+        description: "Erreur lors de l'application au mois prochain",
+        variant: "destructive",
+      })
+    } finally {
+      setPlannerLoading(false)
+    }
+  }
+
+  const applyToEntireYear = async () => {
+    if (!selectedEmployee || Object.keys(monthEdits).length === 0) {
+      toast({
+        title: t.errTitle,
+        description: "Veuillez sélectionner un employé et définir un planning pour le mois actuel",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setPlannerLoading(true)
+
+      const employeeData = selectedEmployeeData
+      const defaultLocationId = employeeData?.locationObj?.id || allLocationsList[0]?.id
+
+      if (!defaultLocationId) {
+        toast({
+          title: t.saveErrTitle,
+          description: "Aucun restaurant trouvé pour cet employé",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Apply pattern to entire year (12 months)
+      const currentYear = plannerMonth.getFullYear()
+
+      for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+        const targetMonth = new Date(currentYear, monthIndex, 1)
+        const { last } = getMonthInfo(targetMonth)
+
+        const schedules = []
+        for (let d = 1; d <= last.getDate(); d++) {
+          const date = new Date(currentYear, monthIndex, d)
+          const dayOfWeek = date.getDay()
+
+          // Find matching day pattern from current month edits
+          const currentMonthPattern = Object.entries(monthEdits).find(([_, assign]) => {
+            const patternDate = new Date(_.split("-").map(Number))
+            return patternDate.getDay() === dayOfWeek
+          })
+
+          if (currentMonthPattern) {
+            const [_, assign] = currentMonthPattern
+            const dateStr = ymd(date)
+
+            let start_time = null
+            let end_time = null
+            let is_working = true
+
+            if (assign.shift === "Matin") {
+              start_time = "09:00"
+              end_time = "18:00"
+            } else if (assign.shift === "Soirée") {
+              start_time = "18:00"
+              end_time = "03:00"
+            } else if (assign.shift === "Doublage") {
+              start_time = "09:00"
+              end_time = "03:00"
+            } else {
+              start_time = null
+              end_time = null
+              is_working = false
+            }
+
+            const finalLocationId =
+              assign.shift === "Repos"
+                ? "0"
+                : assign.location_id && assign.location_id !== "0"
+                  ? String(assign.location_id)
+                  : String(defaultLocationId)
+
+            const dayName = date.toLocaleDateString("en-US", { weekday: "long" })
+
+            schedules.push({
+              employee_id: String(selectedEmployee),
+              date: dateStr,
+              start_time,
+              end_time,
+              shift_type: assign.shift,
+              job_position: jobPosition || selectedEmployeeData?.job_title || "",
+              is_working,
+              location_id: finalLocationId,
+              day: dayName,
+              retard: null,
+              status: "active",
+            })
+          }
+        }
+
+        if (schedules.length > 0) {
+          await createUserSchedule({
+            variables: {
+              employee_id: selectedEmployee,
+              schedules,
+            },
+          })
+
+          // Notify employee for this month
+          const ym = `${currentYear}-${String(monthIndex + 1).padStart(2, "0")}`
+          await notifyPlanning({ variables: { employee_id: selectedEmployee, month: ym } })
+        }
+      }
+
+      toast({
+        title: "Succès",
+        description: `Planning appliqué à toute l'année ${currentYear}`,
+      })
+    } catch (error) {
+      console.error("Error applying to entire year:", error)
+      toast({ title: t.saveErrTitle, description: "Erreur lors de l'application à l'année", variant: "destructive" })
+    } finally {
+      setPlannerLoading(false)
+    }
+  }
+
   // Select up to 3 locations for the quick picker
   // const top3Locations = useMemo(() => {
   //   const list: { id: string; name: string }[] = (locationsData?.locations ?? []).map((l: any) => ({
@@ -652,21 +908,23 @@ export default function AdminJournalPage() {
 
   // Updated: check which employees are missing planning for today using the array structure
   const checkCurrentDayAssignments = useMemo(() => {
-    const today = new Date();
-    const todayKey = ymd(today);
-    const alerts: Record<string, boolean> = {};
+    const today = new Date()
+    const todayKey = ymd(today)
+    const alerts: Record<string, boolean> = {}
     if (employeesData?.employees && allSchedulesData?.allUserWorkSchedules) {
-      const employees = employeesData.employees;
-      const allSchedules = allSchedulesData.allUserWorkSchedules;
+      const employees = employeesData.employees
+      const allSchedules = allSchedulesData.allUserWorkSchedules
       employees.forEach((employee: any) => {
-        const todaySchedule = allSchedules.find((s: any) => String(s.employee_id) === String(employee.id) && normalizeDateKey(s.date) === todayKey);
+        const todaySchedule = allSchedules.find(
+          (s: any) => String(s.employee_id) === String(employee.id) && normalizeDateKey(s.date) === todayKey,
+        )
         if (!todaySchedule) {
-          alerts[employee.id] = true;
+          alerts[employee.id] = true
         }
-      });
+      })
     }
-    return alerts;
-  }, [employeesData, allSchedulesData]);
+    return alerts
+  }, [employeesData, allSchedulesData])
 
   useEffect(() => {
     setCurrentDayAlerts(checkCurrentDayAssignments)
@@ -766,6 +1024,54 @@ export default function AdminJournalPage() {
             )}
           </div>
         </div>
+        {/* Filters */}
+        <Card className="glass-card backdrop-blur-futuristic border-0 shadow-2xl">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-white text-lg sm:text-xl" dir="auto">
+              {t.filters || "Filtres"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              {/* Search Input */}
+              <div className="w-full">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder={t.searchPlaceholder || "Rechercher par nom..."}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 glass-card backdrop-blur-futuristic bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+              {/* Selects */}
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <div className="flex-1">
+                  <Select value={locationFilter} onValueChange={setLocationFilter}>
+                    <SelectTrigger className="w-full glass-card backdrop-blur-futuristic bg-slate-800/50 border-slate-600 text-white">
+                      <SelectValue placeholder={t.restaurant || "Restaurant"} />
+                    </SelectTrigger>
+                    <SelectContent className="glass-card backdrop-blur-futuristic bg-slate-900/95 border-slate-700 shadow-xl">
+                      <SelectItem value="all" className="text-white hover:bg-slate-800/80 focus:bg-slate-800/80">
+                        <span dir="auto">{t.allRestaurants || "Tous les restaurants"}</span>
+                      </SelectItem>
+                      {allLocationsList.map((location: any) => (
+                        <SelectItem
+                          key={location.id}
+                          value={location.id}
+                          className="text-white hover:bg-slate-800/80 focus:bg-slate-800/80"
+                        >
+                          <span dir="auto">{location.name}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Weekly Schedule Table (kept) */}
         <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-purple-900/60 to-slate-900/70">
@@ -789,7 +1095,7 @@ export default function AdminJournalPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp: any) => {
+                  {filteredEmployees.map((emp: any) => {
                     const needsCurrentDayUpdate = currentDayAlerts[emp.id]
 
                     return (
@@ -813,9 +1119,7 @@ export default function AdminJournalPage() {
                                   {emp.name}
                                 </p>
                                 {needsCurrentDayUpdate && (
-                                  <AlertTriangle
-                                    className="w-4 h-4 text-orange-400 flex-shrink-0"
-                                  />
+                                  <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0" />
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground truncate" dir="auto">
@@ -1131,19 +1435,23 @@ export default function AdminJournalPage() {
               >
                 {t.clearAll}
               </Button>
-<Button
-                  variant="outline"
-                  className="text-slate-300 border-white/20 hover:bg-white/10 bg-transparent"
-                >
-                  mois prochain
-                </Button>
+              <Button
+                variant="outline"
+                className="text-slate-300 border-white/20 hover:bg-white/10 bg-transparent"
+                onClick={applyToNextMonth}
+                disabled={plannerLoading}
+              >
+                mois prochain
+              </Button>
 
-<Button
-                  variant="outline"
-                  className="text-slate-300 border-white/20 hover:bg-white/10 bg-transparent"
-                >
-                  année
-                </Button>
+              <Button
+                variant="outline"
+                className="text-slate-300 border-white/20 hover:bg-white/10 bg-transparent"
+                onClick={applyToEntireYear}
+                disabled={plannerLoading}
+              >
+                année
+              </Button>
 
               <div className="flex gap-2">
                 <Button
@@ -1153,7 +1461,7 @@ export default function AdminJournalPage() {
                 >
                   Annuler
                 </Button>
-                
+
                 <Button
                   onClick={saveMonth}
                   disabled={plannerLoading}

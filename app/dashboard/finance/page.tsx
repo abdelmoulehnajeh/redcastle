@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 
 import { useAuth } from "@/lib/auth-context"
-import { GET_EMPLOYEE, GET_TIME_ENTRIES, GET_WORK_SCHEDULES_RANGE } from "@/lib/graphql-queries"
+import { GET_EMPLOYEE, GET_TIME_ENTRIES, GET_WORK_SCHEDULES_RANGE, GET_EMPLOYEE_DISCIPLINARY_DATA, GET_LOCATIONS } from "@/lib/graphql-queries"
 import { useLang, type Lang } from "@/lib/i18n"
 
 type Dict = {
@@ -86,7 +86,7 @@ const translations: Record<Lang, Dict> = {
     advance: "Avance",
     salaryAdvance: "Avance sur salaire",
     netSalary: "Salaire net estimé",
-    netSalaryFormula: "Calcul : Salaire + Prime - Avance",
+    netSalaryFormula: "Calcul : Prix/jour × jours travaillés + Prime − Avance − Pénalités",
 
     performanceTitle: "Score de performance",
     performanceSubtitle: "Basé sur votre assiduité et comportement",
@@ -135,7 +135,7 @@ const translations: Record<Lang, Dict> = {
     advance: "سلفة",
     salaryAdvance: "سلفة على الراتب",
     netSalary: "الراتب الصافي التقديري",
-    netSalaryFormula: "الحساب: الراتب + المنحة - السلفة",
+    netSalaryFormula: "الحساب: سعر/اليوم × أيام العمل + المنحة − السلفة − العقوبات",
 
     performanceTitle: "درجة الأداء",
     performanceSubtitle: "استنادًا إلى الانضباط والسلوك",
@@ -182,6 +182,7 @@ type Employee = {
   retard?: number | string
   tenu_de_travail?: number | string
   status?: string
+  price_j?: number | string
 }
 
 function monthStartEnd(ym: string) {
@@ -205,6 +206,44 @@ function ymAdd(ym: string, delta: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }
 
+function getAbbrev(name: string | undefined | null, max = 3) {
+  if (!name || typeof name !== "string" || !name.trim()) return ""
+  const parts = name.trim().split(/\s+/)
+  const letters = parts.map((p) => p[0]?.toUpperCase()).join("")
+  const abbr = letters || name.slice(0, max).toUpperCase()
+  return abbr.slice(0, max)
+}
+
+function ymd(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${dd}`
+}
+
+function normalizeDateKey(input: unknown): string {
+  if (input == null) return ""
+  if (typeof input === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input
+    const num = Number(input)
+    if (Number.isFinite(num)) {
+      const d = String(input).length >= 12 ? new Date(num) : new Date(num * 1000)
+      return ymd(d)
+    }
+    const parsed = Date.parse(input)
+    if (!Number.isNaN(parsed)) return ymd(new Date(parsed))
+    return input
+  }
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return ymd(new Date(input))
+  }
+  try {
+    const d = new Date(String(input))
+    if (!Number.isNaN(d.getTime())) return ymd(d)
+  } catch {}
+  return ""
+}
+
 export default function FinancePage() {
   const { user } = useAuth()
   const { lang } = useLang()
@@ -225,13 +264,9 @@ export default function FinancePage() {
   const salaire = Number(employee?.salaire ?? 0)
   const prime = Number(employee?.prime ?? 0)
   const avance = Number(employee?.avance ?? 0)
+  const price_j = Number(employee?.price_j ?? 0)
 
-  const infractions = Number(employee?.infractions ?? 0)
-  const absence = Number(employee?.absence ?? 0)
-  const retard = Number(employee?.retard ?? 0)
-
-  const totalSalary = Math.max(0, salaire + prime - avance)
-  const performanceScore = Math.max(0, Math.min(100, 100 - (infractions * 5 + absence * 3 + retard * 2)))
+  // Monthly disciplinary and salary will be computed from server-filtered data below
 
   const Money = ({ amount }: { amount: number }) => (
     <span dir="ltr" className="tabular-nums">
@@ -252,40 +287,81 @@ export default function FinancePage() {
     variables: { employee_id: user?.employee_id, start: startDate, end: endDate },
     skip: !user?.employee_id,
   })
+  const { data: discData } = useQuery(GET_EMPLOYEE_DISCIPLINARY_DATA, {
+    variables: { employee_id: user?.employee_id, period: selectedYm },
+    skip: !user?.employee_id,
+    fetchPolicy: "cache-and-network",
+  })
+  const { data: locationsData } = useQuery(GET_LOCATIONS, { fetchPolicy: "cache-first" })
+  const allLocationsList = useMemo(
+    () =>
+      locationsData?.locations.map((l: any) => ({ id: String(l.id), name: l.name })) || [],
+    [locationsData],
+  )
   const timeEntries = teData?.timeEntries || []
   const workSchedules = wsData?.workSchedulesRange || []
 
   // Build map date => dots (1 single, 2 doublage)
+  const monthSchedules = useMemo(() => {
+    return (workSchedules || []).filter((s: any) => {
+      const d = new Date(normalizeDateKey(s.date))
+      return (
+        d.getFullYear() === Number.parseInt(selectedYm.split("-")[0]) &&
+        d.getMonth() + 1 === Number.parseInt(selectedYm.split("-")[1])
+      )
+    })
+  }, [workSchedules, selectedYm])
+
+  const dayShifts = useMemo(() => {
+    const shifts: Record<number, { shift: string; location_id?: string; job_position?: string }> = {}
+    monthSchedules.forEach((s: any) => {
+      const date = new Date(normalizeDateKey(s.date))
+      const day = date.getDate()
+      shifts[day] = {
+        shift: s.shift_type,
+        location_id: s.shift_type === "Repos" ? "0" : String(s.location_id),
+        job_position: s.job_position,
+      }
+    })
+    return shifts
+  }, [monthSchedules])
+
   const dotByDate = useMemo(() => {
     const map = new Map<string, number>()
-    for (const s of workSchedules) {
-      const date = String(s.date)
-      let dots = 0
-      if (s.shift_type === "Doublage") dots = 2
-      else if (s.shift_type === "Matin" || s.shift_type === "Soirée") dots = 1
-      map.set(date, Math.max(map.get(date) || 0, dots))
-    }
-    const countByDate = timeEntries.reduce<Record<string, number>>((acc, te: any) => {
-      const d = String(te.date)
-      acc[d] = (acc[d] || 0) + 1
-      return acc
-    }, {})
-    for (const [d, c] of Object.entries(countByDate)) {
-      if (!map.has(d)) map.set(d, Math.min(2, c))
+    for (const s of monthSchedules) {
+      if (s?.is_worked === true) {
+        const dateKey = ymd(new Date(normalizeDateKey(s.date)))
+        const dots = s.shift_type === "Doublage" ? 2 : (s.shift_type === "Matin" || s.shift_type === "Soirée" ? 1 : 0)
+        map.set(dateKey, Math.max(map.get(dateKey) || 0, dots))
+      }
     }
     return map
-  }, [workSchedules, timeEntries])
+  }, [monthSchedules])
 
-  let workedDays = 0
-  let doubleShifts = 0
   const daysInMonth = new Date(Number(selectedYm.split("-")[0]), Number(selectedYm.split("-")[1]), 0).getDate()
-  for (let day = 1; day <= daysInMonth; day++) {
-    const key = `${selectedYm}-${String(day).padStart(2, "0")}`
-    const dots = dotByDate.get(key) || 0
-    if (dots >= 1) workedDays++
-    if (dots >= 2) doubleShifts++
-  }
+  const [singleDays, doubleDays] = useMemo(() => {
+    let single = 0, dbl = 0
+    for (const s of monthSchedules) {
+      if (s?.is_worked === true) {
+        if (s.shift_type === "Doublage") dbl++
+        else if (s.shift_type === "Matin" || s.shift_type === "Soirée") single++
+      }
+    }
+    return [single, dbl]
+  }, [monthSchedules])
+  const workedDays = singleDays + doubleDays
+  const doubleShifts = doubleDays
   const offDays = Math.max(0, daysInMonth - workedDays)
+
+  // Compute monthly disciplinary sums and estimated net salary
+  const discInfractions = discData?.infractions || []
+  const discAbsences = discData?.absences || []
+  const discRetards = discData?.retards || []
+  const sumPrices = (arr: any[]) => arr.reduce((s, it) => s + (Number(it.price) || 0), 0)
+  const totalDeductions = sumPrices(discInfractions) + sumPrices(discAbsences) + sumPrices(discRetards)
+  const weightedDays = singleDays + doubleDays * 2
+  const totalSalary = Math.max(0, Math.round(((price_j * weightedDays + prime - avance - totalDeductions) || 0) * 100) / 100)
+  const performanceScore = Math.max(0, Math.min(100, 100 - ((discInfractions.length) * 5 + (discAbsences.length) * 3 + (discRetards.length) * 2)))
 
   function generateCalendarCells(ym: string): { type: "blank" | "day"; day?: number }[] {
     const first = new Date(`${ym}-01T00:00:00`)
@@ -357,6 +433,13 @@ export default function FinancePage() {
                   description: t.salaryAdvance,
                   icon: Minus,
                   color: "text-rose-500",
+                },
+                {
+                  title: "Daily Rate",
+                  value: <Money amount={price_j} />,
+                  description: "Daily rate",
+                  icon: DollarSign,
+                  color: "text-blue-500",
                 },
               ].map((item, index) => (
                 <div key={index} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
@@ -487,13 +570,19 @@ export default function FinancePage() {
                   if (cell.type === "blank") {
                     return <div key={`blank-${idx}`} className="h-16 sm:h-20 rounded-xl bg-transparent" />
                   }
-                  const dateStr = `${selectedYm}-${String(cell.day).padStart(2, "0")}`
-                  const dots = dotByDate.get(dateStr) || 0
+                  const ds = `${selectedYm}-${String(cell.day).padStart(2, "0")}`
+                  const assign = dayShifts[cell.day!]
+                  const shift = assign?.shift
+                  const isDouble = shift === "Doublage"
+                  const isSimple = shift === "Matin" || shift === "Soirée"
+                  const isRepos = !shift || shift === "Repos"
+                  const dots = isDouble ? 2 : isSimple ? 1 : 0
                   return (
                     <div
                       key={`day-${cell.day}`}
-                      className={`h-16 sm:h-20 rounded-xl border border-white/10 relative overflow-hidden
-                        ${dots > 0 ? "bg-emerald-500/5" : "bg-slate-800/30"}`}
+                      className={`h-16 sm:h-20 rounded-xl border border-white/10 relative overflow-hidden ${
+                        dots > 0 ? "bg-emerald-500/5" : "bg-slate-800/30"
+                      }`}
                     >
                       <div className="absolute inset-0 pointer-events-none">
                         <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/5" />
@@ -507,6 +596,19 @@ export default function FinancePage() {
                             <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" />
                           )}
                         </div>
+                        {assign?.location_id && shift !== "Repos" && (
+                          <span
+                            className="absolute right-1 bottom-1 text-[9px] px-1 py-0.5 rounded-md bg-slate-800/70 text-slate-100 border border-white/10"
+                            title={allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? ""}
+                          >
+                            {getAbbrev(allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? "", 3)}
+                          </span>
+                        )}
+                        {isRepos && (
+                          <span className="absolute right-1 bottom-1 text-[10px] font-bold text-white bg-gray-600/80 px-1 rounded" title="Repos">
+                            REP
+                          </span>
+                        )}
                       </div>
                     </div>
                   )
@@ -574,9 +676,9 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {[
-                { title: t.infractions, value: infractions, color: "text-rose-500" },
-                { title: t.absences, value: absence, color: "text-orange-500" },
-                { title: t.late, value: retard, color: "text-yellow-500" },
+                { title: t.infractions, value: (discData?.infractions || []).length, color: "text-rose-500" },
+                { title: t.absences, value: (discData?.absences || []).length, color: "text-orange-500" },
+                { title: t.late, value: (discData?.retards || []).length, color: "text-yellow-500" },
               ].map((item, index) => (
                 <div key={index} className="space-y-2">
                   <div className={`flex items-center justify-between ${align}`}>

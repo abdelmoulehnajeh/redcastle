@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -175,7 +175,7 @@ const translations: Record<Lang, Dict> = {
     welcome: (u) => `Bienvenue, ${u ?? ""}!`,
     introAdmin: "Gérez votre restaurant depuis ce tableau de bord administrateur futuriste",
     introManager: "Supervisez votre équipe et les opérations avec une interface révolutionnaire",
-    introEmployee: "Consultez vos informations dans un environnement de bonne travaill",
+    introEmployee: "Consultez vos informations dans un environnement",
     roleAdmin: "🔥 Administrateur",
     roleManager: "⚡ Manager",
     roleEmployee: "✨ Employé",
@@ -184,7 +184,7 @@ const translations: Record<Lang, Dict> = {
     statsHoursThisWeek: (h) => `+${h} cette semaine`,
     statsEstimatedSalary: "Salaire estimé",
     statsBasedOnRate: (r) => `Basé sur ${r}j`,
- 
+
     statsDaysAvailable: "jours disponibles",
     statsStatus: "Statut",
     active: "actif",
@@ -296,7 +296,7 @@ const translations: Record<Lang, Dict> = {
     statsHoursThisWeek: (h) => `+${h} هذا الأسبوع`,
     statsEstimatedSalary: "الراتب التقديري",
     statsBasedOnRate: (r) => `حسب ${r}/ساعة`,
-    
+
     statsDaysAvailable: "أيام متاحة",
     statsStatus: "الحالة",
     active: "نشط",
@@ -689,7 +689,7 @@ export default function DashboardPage() {
                 gradient="from-emerald-500 to-teal-500"
                 glowColor="rgba(16, 185, 129, 0.4)"
               />
-           
+
               <StatsCard3D
                 title={t.statsStatus}
                 value={lang === "ar" ? t.active : "Actif"}
@@ -785,284 +785,283 @@ export default function DashboardPage() {
 
         {/* Admin Employees Management */}
         {user?.role === "admin" && (
-          <Card3D>
-            <CardHeader className="flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="w-full">
-                  <CardTitle className="flex items-center gap-2 sm:gap-3 text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                    <Users className="h-5 w-5 sm:h-7 sm:w-7 text-blue-400" />
-                    <span dir="auto">{t.employeesTitle}</span>
-                  </CardTitle>
-                  <CardDescription className="text-gray-300 text-sm sm:text-lg" dir="auto">
-                    {t.employeesDesc}
-                  </CardDescription>
-                </div>
+          <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-purple-900/60 to-slate-900/70">            <CardHeader className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="w-full">
+                <CardTitle className="flex items-center gap-2 sm:gap-3 text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                  <Users className="h-5 w-5 sm:h-7 sm:w-7 text-blue-400" />
+                  <span dir="auto">{t.employeesTitle}</span>
+                </CardTitle>
+                <CardDescription className="text-gray-300 text-sm sm:text-lg" dir="auto">
+                  {t.employeesDesc}
+                </CardDescription>
+              </div>
 
-                <Dialog open={isAddEmployeeOpen} onOpenChange={setIsAddEmployeeOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      className="w-full sm:w-auto bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-semibold px-4 py-2 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 shadow-lg"
-                      style={{ boxShadow: "0 10px 25px -5px rgba(239, 68, 68, 0.4)" }}
+              <Dialog open={isAddEmployeeOpen} onOpenChange={setIsAddEmployeeOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    className="w-full sm:w-auto bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-semibold px-4 py-2 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 shadow-lg"
+                    style={{ boxShadow: "0 10px 25px -5px rgba(239, 68, 68, 0.4)" }}
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    <span dir="auto">{t.newEmployeeBtn}</span>
+                  </Button>
+                </DialogTrigger>
+
+                <DialogContent className="w-[95vw] max-w-md mx-auto bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-2xl text-white">
+                  <DialogHeader>
+                    <DialogTitle
+                      className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent"
+                      dir="auto"
                     >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      <span dir="auto">{t.newEmployeeBtn}</span>
-                    </Button>
-                  </DialogTrigger>
+                      {t.addEmployeeTitle}
+                    </DialogTitle>
+                    <DialogDescription className="text-gray-300 text-sm" dir="auto">
+                      {t.addEmployeeDesc}
+                    </DialogDescription>
+                  </DialogHeader>
 
-                  <DialogContent className="w-[95vw] max-w-md mx-auto bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-2xl text-white">
-                    <DialogHeader>
-                      <DialogTitle
-                        className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent"
-                        dir="auto"
-                      >
-                        {t.addEmployeeTitle}
-                      </DialogTitle>
-                      <DialogDescription className="text-gray-300 text-sm" dir="auto">
-                        {t.addEmployeeDesc}
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="prenom" className="text-gray-300 text-sm" dir="auto">
-                            {t.firstName}
-                          </Label>
-                          <Input
-                            id="prenom"
-                            value={newEmployee.prenom}
-                            onChange={(e) => setNewEmployee({ ...newEmployee, prenom: e.target.value })}
-                            placeholder={lang === "ar" ? "محمد" : "Jean"}
-                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="nom" className="text-gray-300 text-sm" dir="auto">
-                            {t.lastName}
-                          </Label>
-                          <Input
-                            id="nom"
-                            value={newEmployee.nom}
-                            onChange={(e) => setNewEmployee({ ...newEmployee, nom: e.target.value })}
-                            placeholder={lang === "ar" ? "الهاشمي" : "Dupont"}
-                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            required
-                          />
-                        </div>
-                      </div>
-
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="job_title" className="text-gray-300 text-sm" dir="auto">
-                          {t.jobTitle}
+                        <Label htmlFor="prenom" className="text-gray-300 text-sm" dir="auto">
+                          {t.firstName}
                         </Label>
                         <Input
-                          id="job_title"
-                          value={newEmployee.job_title}
-                          onChange={(e) => setNewEmployee({ ...newEmployee, job_title: e.target.value })}
-                          placeholder={lang === "ar" ? "نادل، طاهٍ، مدير..." : "Serveur, Cuisinier, Manager..."}
+                          id="prenom"
+                          value={newEmployee.prenom}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, prenom: e.target.value })}
+                          placeholder={lang === "ar" ? "محمد" : "Jean"}
                           className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
                           required
                         />
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="salaire" className="text-gray-300 text-sm" dir="auto">
-                            {t.salary}
-                          </Label>
-                          <Input
-                            id="salaire"
-                            type="number"
-                            value={newEmployee.salaire}
-                            onChange={(e) => setNewEmployee({ ...newEmployee, salaire: e.target.value })}
-                            placeholder="2000"
-                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="role" className="text-gray-300 text-sm" dir="auto">
-                            {t.role}
-                          </Label>
-                          <Select
-                            value={newEmployee.role}
-                            onValueChange={(value) => setNewEmployee({ ...newEmployee, role: value })}
-                          >
-                            <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white rounded-xl">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-800 border-slate-600 text-white">
-                              <SelectItem value="employee">{t.employee}</SelectItem>
-                              <SelectItem value="manager">{t.roleManager.replace("⚡ ", "")}</SelectItem>
-                              <SelectItem value="admin">{t.admin}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
                       <div>
-                        <Label htmlFor="location" className="text-gray-300 text-sm" dir="auto">
-                          {t.restaurant}
+                        <Label htmlFor="nom" className="text-gray-300 text-sm" dir="auto">
+                          {t.lastName}
+                        </Label>
+                        <Input
+                          id="nom"
+                          value={newEmployee.nom}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, nom: e.target.value })}
+                          placeholder={lang === "ar" ? "الهاشمي" : "Dupont"}
+                          className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="job_title" className="text-gray-300 text-sm" dir="auto">
+                        {t.jobTitle}
+                      </Label>
+                      <Input
+                        id="job_title"
+                        value={newEmployee.job_title}
+                        onChange={(e) => setNewEmployee({ ...newEmployee, job_title: e.target.value })}
+                        placeholder={lang === "ar" ? "نادل، طاهٍ، مدير..." : "Serveur, Cuisinier, Manager..."}
+                        className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="salaire" className="text-gray-300 text-sm" dir="auto">
+                          {t.salary}
+                        </Label>
+                        <Input
+                          id="salaire"
+                          type="number"
+                          value={newEmployee.salaire}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, salaire: e.target.value })}
+                          placeholder="2000"
+                          className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="role" className="text-gray-300 text-sm" dir="auto">
+                          {t.role}
                         </Label>
                         <Select
-                          value={newEmployee.location_id}
-                          onValueChange={(value) => setNewEmployee({ ...newEmployee, location_id: value })}
+                          value={newEmployee.role}
+                          onValueChange={(value) => setNewEmployee({ ...newEmployee, role: value })}
                         >
                           <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white rounded-xl">
-                            <SelectValue placeholder={t.selectRestaurant} />
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-slate-800 border-slate-600 text-white">
-                            {locations.map((location: any) => (
-                              <SelectItem key={location.id} value={location.id}>
-                                {location.name}
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="employee">{t.employee}</SelectItem>
+                            <SelectItem value="manager">{t.roleManager.replace("⚡ ", "")}</SelectItem>
+                            <SelectItem value="admin">{t.admin}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
 
-                      {/* Optional fields section */}
-                      <div className="border-t border-slate-600/50 pt-4">
-                        <h4 className="text-sm font-medium text-gray-300 mb-3" dir="auto">
-                          Informations optionnelles {t.optional}
-                        </h4>
+                    <div>
+                      <Label htmlFor="location" className="text-gray-300 text-sm" dir="auto">
+                        {t.restaurant}
+                      </Label>
+                      <Select
+                        value={newEmployee.location_id}
+                        onValueChange={(value) => setNewEmployee({ ...newEmployee, location_id: value })}
+                      >
+                        <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white rounded-xl">
+                          <SelectValue placeholder={t.selectRestaurant} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-800 border-slate-600 text-white">
+                          {locations.map((location: any) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="username" className="text-gray-300 text-sm" dir="auto">
-                              {t.username} {t.optional}
-                            </Label>
-                            <Input
-                              id="username"
-                              value={newEmployee.username}
-                              onChange={(e) => setNewEmployee({ ...newEmployee, username: e.target.value })}
-                              placeholder={lang === "ar" ? "mohamed.ali" : "jean.dupont"}
-                              className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            />
-                            <p className="text-xs text-gray-400 mt-1" dir="auto">
-                              {lang === "ar"
-                                ? "سيتم إنشاؤه تلقائياً إذا ترك فارغاً"
-                                : "Sera généré automatiquement si laissé vide"}
-                            </p>
-                          </div>
+                    {/* Optional fields section */}
+                    <div className="border-t border-slate-600/50 pt-4">
+                      <h4 className="text-sm font-medium text-gray-300 mb-3" dir="auto">
+                        Informations optionnelles {t.optional}
+                      </h4>
 
-                          <div>
-                            <Label htmlFor="email" className="text-gray-300 text-sm" dir="auto">
-                              {t.email} {t.optional}
-                            </Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              value={newEmployee.email}
-                              onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
-                              placeholder={lang === "ar" ? "mohamed.ali@example.com" : "jean.dupont@example.com"}
-                              className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            />
-                            <p className="text-xs text-gray-400 mt-1" dir="auto">
-                              {lang === "ar"
-                                ? "سيتم إنشاؤه تلقائياً إذا ترك فارغاً"
-                                : "Sera généré automatiquement si laissé vide"}
-                            </p>
-                          </div>
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="username" className="text-gray-300 text-sm" dir="auto">
+                            {t.username} {t.optional}
+                          </Label>
+                          <Input
+                            id="username"
+                            value={newEmployee.username}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, username: e.target.value })}
+                            placeholder={lang === "ar" ? "mohamed.ali" : "jean.dupont"}
+                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                          />
+                          <p className="text-xs text-gray-400 mt-1" dir="auto">
+                            {lang === "ar"
+                              ? "سيتم إنشاؤه تلقائياً إذا ترك فارغاً"
+                              : "Sera généré automatiquement si laissé vide"}
+                          </p>
+                        </div>
 
-                          <div>
-                            <Label htmlFor="telephone" className="text-gray-300 text-sm" dir="auto">
-                              {t.phone} {t.optional}
-                            </Label>
-                            <Input
-                              id="telephone"
-                              value={newEmployee.telephone}
-                              onChange={(e) => setNewEmployee({ ...newEmployee, telephone: e.target.value })}
-                              placeholder="0123456789"
-                              className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
-                            />
-                          </div>
+                        <div>
+                          <Label htmlFor="email" className="text-gray-300 text-sm" dir="auto">
+                            {t.email} {t.optional}
+                          </Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={newEmployee.email}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                            placeholder={lang === "ar" ? "mohamed.ali@example.com" : "jean.dupont@example.com"}
+                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                          />
+                          <p className="text-xs text-gray-400 mt-1" dir="auto">
+                            {lang === "ar"
+                              ? "سيتم إنشاؤه تلقائياً إذا ترك فارغاً"
+                              : "Sera généré automatiquement si laissé vide"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="telephone" className="text-gray-300 text-sm" dir="auto">
+                            {t.phone} {t.optional}
+                          </Label>
+                          <Input
+                            id="telephone"
+                            value={newEmployee.telephone}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, telephone: e.target.value })}
+                            placeholder="0123456789"
+                            className="bg-slate-700/50 border-slate-600 text-white rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                          />
                         </div>
                       </div>
                     </div>
-
-                    <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsAddEmployeeOpen(false)}
-                        className="w-full sm:w-auto border-slate-600 text-gray-300 hover:bg-slate-700"
-                      >
-                        {t.cancel}
-                      </Button>
-                      <Button
-                        onClick={handleCreateEmployee}
-                        className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
-                      >
-                        {t.create}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                <div className="flex flex-col sm:flex-row gap-2 w-full">
-                  <div className="flex-1 min-w-[150px]">
-                    <label
-                      htmlFor="employee-location-filter"
-                      className="text-gray-300 text-sm font-medium block mb-1"
-                      dir="auto"
-                    >
-                      {t.filterRestaurant}
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="employee-location-filter"
-                        value={employeeLocationFilter}
-                        onChange={(e) => setEmployeeLocationFilter(e.target.value)}
-                        className="w-full bg-slate-800/90 border border-slate-600/50 text-white text-sm rounded-2xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 transition-all duration-300 appearance-none pr-10 shadow-sm hover:bg-slate-700/90 hover:border-blue-400/70"
-                      >
-                        <option value="">{t.all}</option>
-                        {locations.map((loc: any) => (
-                          <option key={loc.id} value={loc.id}>
-                            {loc.name}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </span>
-                    </div>
                   </div>
 
-                  <div className="flex-1 min-w-[150px]">
-                    <label
-                      htmlFor="employee-status-filter"
-                      className="text-gray-300 text-sm font-medium block mb-1"
-                      dir="auto"
+                  <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAddEmployeeOpen(false)}
+                      className="w-full sm:w-auto border-slate-600 text-gray-300 hover:bg-slate-700"
                     >
-                      {t.filterStatus}
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="employee-status-filter"
-                        value={employeeStatusFilter}
-                        onChange={(e) => setEmployeeStatusFilter(e.target.value)}
-                        className="w-full bg-slate-800/90 border border-slate-600/50 text-white text-sm rounded-2xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 transition-all duration-300 appearance-none pr-10 shadow-sm hover:bg-slate-700/90 hover:border-blue-400/70"
-                      >
-                        <option value="">{t.all}</option>
-                        <option value="active">{t.active}</option>
-                        <option value="inactive">{t.inactive}</option>
-                        <option value="suspended">{t.suspended}</option>
-                      </select>
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </span>
-                    </div>
+                      {t.cancel}
+                    </Button>
+                    <Button
+                      onClick={handleCreateEmployee}
+                      className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+                    >
+                      {t.create}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 mt-4">
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
+                <div className="flex-1 min-w-[150px]">
+                  <label
+                    htmlFor="employee-location-filter"
+                    className="text-gray-300 text-sm font-medium block mb-1"
+                    dir="auto"
+                  >
+                    {t.filterRestaurant}
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="employee-location-filter"
+                      value={employeeLocationFilter}
+                      onChange={(e) => setEmployeeLocationFilter(e.target.value)}
+                      className="w-full bg-slate-800/90 border border-slate-600/50 text-white text-sm rounded-2xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 transition-all duration-300 appearance-none pr-10 shadow-sm hover:bg-slate-700/90 hover:border-blue-400/70"
+                    >
+                      <option value="">{t.all}</option>
+                      {locations.map((loc: any) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-[150px]">
+                  <label
+                    htmlFor="employee-status-filter"
+                    className="text-gray-300 text-sm font-medium block mb-1"
+                    dir="auto"
+                  >
+                    {t.filterStatus}
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="employee-status-filter"
+                      value={employeeStatusFilter}
+                      onChange={(e) => setEmployeeStatusFilter(e.target.value)}
+                      className="w-full bg-slate-800/90 border border-slate-600/50 text-white text-sm rounded-2xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 transition-all duration-300 appearance-none pr-10 shadow-sm hover:bg-slate-700/90 hover:border-blue-400/70"
+                    >
+                      <option value="">{t.all}</option>
+                      <option value="active">{t.active}</option>
+                      <option value="inactive">{t.inactive}</option>
+                      <option value="suspended">{t.suspended}</option>
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </span>
                   </div>
                 </div>
               </div>
-            </CardHeader>
+            </div>
+          </CardHeader>
 
             <CardContent className="px-2 sm:px-6">
               {filteredEmployees.length > 0 ? (
@@ -1151,11 +1150,10 @@ export default function DashboardPage() {
                             <span className="text-sm text-gray-400">{t.statusCol}</span>
                             <Badge
                               variant={employee.status === "active" ? "default" : "secondary"}
-                              className={`text-xs ${
-                                employee.status === "active"
+                              className={`text-xs ${employee.status === "active"
                                   ? "bg-green-500/20 text-green-400 border-green-500/30"
                                   : "bg-gray-500/20 text-gray-400 border-gray-500/30"
-                              }`}
+                                }`}
                             >
                               {employee.status === "active"
                                 ? t.active
@@ -1326,7 +1324,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </CardContent>
-          </Card3D>
+          </Card>
         )}
 
         {/* Spacer for mobile */}

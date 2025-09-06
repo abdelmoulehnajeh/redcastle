@@ -9,7 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@apollo/client": "^3.8.0",
+    "@apollo/client": "latest",
     "@apollo/server": "latest",
     "@as-integrations/next": "latest",
     "@capacitor/cli": "latest",
@@ -65,7 +65,6 @@
     "react-day-picker": "latest",
     "react-dom": "^19",
     "react-hook-form": "latest",
-    "react-is": "^19.1.1",
     "react-resizable-panels": "latest",
     "react-router-dom": "latest",
     "recharts": "latest",

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   ArrowLeft,
   User,
@@ -61,10 +62,10 @@ export default function EmployeeDetailsPage() {
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false)
 
   const [disciplinaryForms, setDisciplinaryForms] = useState({
-    infraction: { name: "", price: "", description: "" },
-    absence: { name: "", price: "", description: "" },
-    retard: { name: "", price: "", description: "" },
-    tenue: { name: "", price: "", description: "" },
+    infraction: { name: "", price: "", description: "", date: undefined as Date | undefined },
+    absence: { name: "", price: "", description: "", date: undefined as Date | undefined },
+    retard: { name: "", price: "", description: "", date: undefined as Date | undefined },
+    tenue: { name: "", price: "", description: "", date: undefined as Date | undefined },
   })
 
   // Single GraphQL query to get all employee data
@@ -101,7 +102,7 @@ export default function EmployeeDetailsPage() {
             retard: () => mutationData.updateEmployee.retard,
             tenu_de_travail: () => mutationData.updateEmployee.tenu_de_travail,
             status: () => mutationData.updateEmployee.status,
-            price_h: () => mutationData.updateEmployee.price_h,
+            price_j: () => mutationData.updateEmployee.price_j,
             location_id: () => mutationData.updateEmployee.location_id,
           },
         })
@@ -148,7 +149,10 @@ export default function EmployeeDetailsPage() {
     onCompleted: () => {
       refetchDisciplinary()
       refetch()
-      setDisciplinaryForms((prev) => ({ ...prev, infraction: { name: "", price: "", description: "" } }))
+      setDisciplinaryForms((prev) => ({
+        ...prev,
+        infraction: { name: "", price: "", description: "", date: undefined },
+      }))
       toast.success("Infraction ajoutée avec succès")
     },
     onError: (error) => {
@@ -161,7 +165,7 @@ export default function EmployeeDetailsPage() {
     onCompleted: () => {
       refetchDisciplinary()
       refetch()
-      setDisciplinaryForms((prev) => ({ ...prev, absence: { name: "", price: "", description: "" } }))
+      setDisciplinaryForms((prev) => ({ ...prev, absence: { name: "", price: "", description: "", date: undefined } }))
       toast.success("Absence ajoutée avec succès")
     },
     onError: (error) => {
@@ -174,7 +178,7 @@ export default function EmployeeDetailsPage() {
     onCompleted: () => {
       refetchDisciplinary()
       refetch()
-      setDisciplinaryForms((prev) => ({ ...prev, retard: { name: "", price: "", description: "" } }))
+      setDisciplinaryForms((prev) => ({ ...prev, retard: { name: "", price: "", description: "", date: undefined } }))
       toast.success("Retard ajouté avec succès")
     },
     onError: (error) => {
@@ -187,7 +191,7 @@ export default function EmployeeDetailsPage() {
     onCompleted: () => {
       refetchDisciplinary()
       refetch()
-      setDisciplinaryForms((prev) => ({ ...prev, tenue: { name: "", price: "", description: "" } }))
+      setDisciplinaryForms((prev) => ({ ...prev, tenue: { name: "", price: "", description: "", date: undefined } }))
       toast.success("Tenue de travail ajoutée avec succès")
     },
     onError: (error) => {
@@ -266,6 +270,13 @@ export default function EmployeeDetailsPage() {
     }))
   }
 
+  const handleDisciplinaryDateChange = (type: string, date: Date | undefined) => {
+    setDisciplinaryForms((prev) => ({
+      ...prev,
+      [type]: { ...prev[type], date },
+    }))
+  }
+
   const handleAddDisciplinaryItem = async (type: string) => {
     const form = disciplinaryForms[type]
 
@@ -274,12 +285,33 @@ export default function EmployeeDetailsPage() {
       return
     }
 
+    // Centralized date formatting for 'dat' field
+    function formatDateForDat(date: Date | string | undefined): string | null {
+      if (!date) return null
+      // If date is already a string in dd/MM/yyyy, parse it
+      if (typeof date === "string" && date.includes("/")) {
+        const parts = date.split("/")
+        if (parts.length === 3) {
+          return `${parts[0].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[2]}`
+        }
+      }
+      const d = typeof date === "string" ? new Date(date) : date
+      if (isNaN(d.getTime())) return null
+      return format(d, "dd/MM/yyyy", { locale: fr })
+    }
+
+    // Debug: log the date value before sending
+    console.log("[disciplinary] Selected date for", type, ":", form.date)
+
     const variables = {
       employee_id: employeeId,
       name: form.name.trim(),
       description: form.description.trim() || null,
       price: Number.parseFloat(form.price) || 0,
+      dat: formatDateForDat(form.date),
     }
+
+    console.log("[disciplinary] Mutation variables for", type, ":", variables)
 
     try {
       switch (type) {
@@ -297,13 +329,20 @@ export default function EmployeeDetailsPage() {
           break
       }
     } catch (error) {
-      console.error(`Error adding ${type}:`, error)
+      console.error(`[disciplinary] Error adding ${type}:`, error)
     }
   }
 
   const formatDisciplinaryDate = (dateString: string) => {
     try {
-      const date = new Date(dateString)
+      let date: Date
+      // If it's a numeric timestamp (e.g. '1757103452478')
+      if (/^\d+$/.test(dateString)) {
+        date = new Date(Number(dateString))
+      } else {
+        date = new Date(dateString)
+      }
+      if (isNaN(date.getTime())) return dateString
       return format(date, "dd/MM/yyyy", { locale: fr })
     } catch (error) {
       return dateString
@@ -997,6 +1036,12 @@ export default function EmployeeDetailsPage() {
                       value={disciplinaryForms.infraction.description}
                       onChange={(e) => handleDisciplinaryFormChange("infraction", "description", e.target.value)}
                     />
+                    <DatePicker
+                      date={disciplinaryForms.infraction.date}
+                      onDateChange={(date) => handleDisciplinaryDateChange("infraction", date)}
+                      placeholder="Date de l'infraction"
+                      className="h-8 sm:h-10"
+                    />
                   </div>
 
                   {/* Existing Infractions List */}
@@ -1011,7 +1056,7 @@ export default function EmployeeDetailsPage() {
                                 <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
                               )}
                               <div className="text-xs text-muted-foreground mt-1">
-                                {formatDisciplinaryDate(item.created_date)}
+                                {formatDisciplinaryDate(item.dat)}
                               </div>
                             </div>
                             <div className="text-right flex items-start space-x-2">
@@ -1077,6 +1122,12 @@ export default function EmployeeDetailsPage() {
                       value={disciplinaryForms.absence.description}
                       onChange={(e) => handleDisciplinaryFormChange("absence", "description", e.target.value)}
                     />
+                    <DatePicker
+                      date={disciplinaryForms.absence.date}
+                      onDateChange={(date) => handleDisciplinaryDateChange("absence", date)}
+                      placeholder="Date de l'absence"
+                      className=" h-8 sm:h-10"
+                    />
                   </div>
 
                   {/* Existing Absences List */}
@@ -1091,7 +1142,7 @@ export default function EmployeeDetailsPage() {
                                 <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
                               )}
                               <div className="text-xs text-muted-foreground mt-1">
-                                {formatDisciplinaryDate(item.created_date)}
+                                {formatDisciplinaryDate(item.dat)}
                               </div>
                             </div>
                             <div className="text-right flex items-start space-x-2">
@@ -1155,6 +1206,12 @@ export default function EmployeeDetailsPage() {
                       value={disciplinaryForms.retard.description}
                       onChange={(e) => handleDisciplinaryFormChange("retard", "description", e.target.value)}
                     />
+                    <DatePicker
+                      date={disciplinaryForms.retard.date}
+                      onDateChange={(date) => handleDisciplinaryDateChange("retard", date)}
+                      placeholder="Date du retard"
+                      className=" h-8 sm:h-10"
+                    />
                   </div>
 
                   {/* Existing Retards List */}
@@ -1169,7 +1226,7 @@ export default function EmployeeDetailsPage() {
                                 <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
                               )}
                               <div className="text-xs text-muted-foreground mt-1">
-                                {formatDisciplinaryDate(item.created_date)}
+                                {formatDisciplinaryDate(item.dat)}
                               </div>
                             </div>
                             <div className="text-right flex items-start space-x-2">
@@ -1233,6 +1290,12 @@ export default function EmployeeDetailsPage() {
                       value={disciplinaryForms.tenue.description}
                       onChange={(e) => handleDisciplinaryFormChange("tenue", "description", e.target.value)}
                     />
+                    <DatePicker
+                      date={disciplinaryForms.tenue.date}
+                      onDateChange={(date) => handleDisciplinaryDateChange("tenue", date)}
+                      placeholder="Date de la tenue"
+                      className=" h-8 sm:h-10"
+                    />
                   </div>
 
                   {/* Existing Tenues List */}
@@ -1247,7 +1310,7 @@ export default function EmployeeDetailsPage() {
                                 <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
                               )}
                               <div className="text-xs text-muted-foreground mt-1">
-                                {formatDisciplinaryDate(item.created_date)}
+                                {formatDisciplinaryDate(item.dat)}
                               </div>
                             </div>
                             <div className="text-right flex items-start space-x-2">

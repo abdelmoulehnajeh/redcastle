@@ -302,6 +302,7 @@ interface Employee {
   telephone: string
   job_title: string
   salaire: number
+  price_j: number
   status: string
   created_at: string
   location: { id: string; name: string } | null
@@ -618,10 +619,12 @@ export default function AdminEmployeesPage() {
           <button
             type="button"
             className="focus:outline-none group"
-            onClick={() => setStatusFilter('active')}
+            onClick={() => setStatusFilter("active")}
             aria-label={t.statsActive}
           >
-            <Card className={`glass-card backdrop-blur-futuristic border-0 shadow-2xl transition-all duration-200 group-focus:ring-2 group-focus:ring-green-400 group-hover:scale-[1.03] ${statusFilter === 'active' ? 'ring-2 ring-green-400 scale-[1.03]' : ''}`}>
+            <Card
+              className={`glass-card backdrop-blur-futuristic border-0 shadow-2xl transition-all duration-200 group-focus:ring-2 group-focus:ring-green-400 group-hover:scale-[1.03] ${statusFilter === "active" ? "ring-2 ring-green-400 scale-[1.03]" : ""}`}
+            >
               <CardContent className="p-4 sm:p-5 lg:p-6 relative z-10 flex flex-col items-center">
                 <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-green-400 mb-2" />
                 <div className="text-xl sm:text-2xl font-bold text-white">{fmt(activeEmployees)}</div>
@@ -634,10 +637,12 @@ export default function AdminEmployeesPage() {
           <button
             type="button"
             className="focus:outline-none group"
-            onClick={() => setStatusFilter('inactive')}
+            onClick={() => setStatusFilter("inactive")}
             aria-label={t.statsInactive}
           >
-            <Card className={`glass-card backdrop-blur-futuristic border-0 shadow-2xl transition-all duration-200 group-focus:ring-2 group-focus:ring-red-400 group-hover:scale-[1.03] ${statusFilter === 'inactive' ? 'ring-2 ring-red-400 scale-[1.03]' : ''}`}>
+            <Card
+              className={`glass-card backdrop-blur-futuristic border-0 shadow-2xl transition-all duration-200 group-focus:ring-2 group-focus:ring-red-400 group-hover:scale-[1.03] ${statusFilter === "inactive" ? "ring-2 ring-red-400 scale-[1.03]" : ""}`}
+            >
               <CardContent className="p-4 sm:p-5 lg:p-6 relative z-10 flex flex-col items-center">
                 <UserX className="w-6 h-6 sm:w-8 sm:h-8 text-red-400 mb-2" />
                 <div className="text-xl sm:text-2xl font-bold text-white">{fmt(inactiveEmployees)}</div>
@@ -682,8 +687,6 @@ export default function AdminEmployeesPage() {
 
               {/* Selects */}
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              
-
                 <div className="flex-1">
                   <Select value={locationFilter} onValueChange={setLocationFilter}>
                     <SelectTrigger className="w-full glass-card backdrop-blur-futuristic bg-slate-800/50 border-slate-600 text-white">

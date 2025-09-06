@@ -99,7 +99,7 @@ const LoginPageDemo = () => {
       arabic: "العربية"
     },
     ar: {
-      french: "الفرنسي", 
+      french: "فرنسي", 
       arabic: "العربية"
     }
   };
