@@ -9,7 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@apollo/client": "latest",
+    "@apollo/client": "^3.8.0",
     "@apollo/server": "latest",
     "@as-integrations/next": "latest",
     "@capacitor/cli": "latest",
