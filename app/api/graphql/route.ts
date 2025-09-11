@@ -230,6 +230,7 @@ const typeDefs = gql`
 type Mutation {
   # ...existing mutation definitions...
   createOrUpdateManyUserWorkSchedules(users: [UserSchedulesInput!]!): Boolean!
+  updateUserRole(user_id: ID!, role: String!): User
 }
 
 input UserSchedulesInput {
@@ -474,6 +475,7 @@ type Query {
   location(id: ID!): Location
   workSchedules(employee_id: ID, date: String): [WorkSchedule!]!
   workSchedulesRange(employee_id: ID!): [WorkSchedule!]!
+  workSchedulesManager(start: String, end: String): [WorkSchedule!]!
   contracts(employee_id: ID): [Contract!]!
   leaveRequests(employee_id: ID, status: String): [LeaveRequest!]!
   timeEntries(employeeId: ID!, startDate: String, endDate: String): [TimeEntry!]!
@@ -560,17 +562,14 @@ type Mutation {
   clockOut(timeEntryId: ID!): TimeEntry
   createManagerWorkSchedule(
     employee_id: ID!
-    shift_type: String!
-    job_position: String!
-    start_time: String!
-    end_time: String!
-    date: String!
-    is_working: Boolean!
-  ): WorkSchedule
+    schedules: [WorkScheduleInput!]!
+  ): [WorkSchedule!]!
   sendApprovalRequest(
     type: String!
     reference_id: ID
     manager_id: ID
+    employee_id: ID
+    month: String
     data: String!
   ): Boolean!
   approveManagerSchedule(approval_id: ID!): Boolean!
@@ -1016,12 +1015,50 @@ const resolvers = {
           employee_id,
         ])
         // DEBUG: Log the table name and all rows fetched
-        console.log('[workSchedulesRange] RAW DB rows for', tableName, ':', result.rows);
+        console.log("[workSchedulesRange] RAW DB rows for", tableName, ":", result.rows)
 
         return result.rows
       } catch (error) {
         console.error("Error fetching work schedules range:", error)
-        return []
+        throw new Error("Failed to fetch work schedules range")
+      }
+    },
+    workSchedulesManager: async (_: any, { start, end }: { start?: string; end?: string }) => {
+      try {
+        let query = `SELECT ws.*, e.nom, e.prenom, e.id as employee_id, l.id as location_id, l.name as location_name, l.address as location_address
+                     FROM work_schedules ws
+                     LEFT JOIN employees e ON ws.employee_id = e.id
+                     LEFT JOIN locations l ON ws.location_id = l.id
+                     WHERE 1=1`
+        const params: any[] = []
+
+        if (start) {
+          params.push(start)
+          query += ` AND ws.date >= $${params.length}`
+        }
+
+        if (end) {
+          params.push(end)
+          query += ` AND ws.date <= $${params.length}`
+        }
+
+        query += " ORDER BY ws.date ASC"
+
+        const result = await pool.query(query, params)
+
+        return result.rows.map((row) => ({
+          ...row,
+          location: row.location_name
+            ? {
+                id: row.location_id,
+                name: row.location_name,
+                address: row.location_address,
+              }
+            : null,
+        }))
+      } catch (error) {
+        console.error("Error fetching manager work schedules:", error)
+        throw new Error("Failed to fetch manager work schedules")
       }
     },
     contracts: async (_: any, { employee_id }: { employee_id?: string }) => {
@@ -1261,19 +1298,20 @@ const resolvers = {
       try {
         if (period) {
           const likeRef = `${period}%`
-                  console.log( 'eeee',{ employee_id, likeRef } )
+          console.log("eeee", { employee_id, likeRef })
 
           const q = `SELECT * FROM infractions
                      WHERE employee_id = $1
                        AND dat::text LIKE $2
                      ORDER BY dat DESC`
           const result = await pool.query(q, [employee_id, likeRef])
-          console.log( 'rrrr', result.rows )
+          console.log("rrrr", result.rows)
           return result.rows
         } else {
-          const result = await pool.query("SELECT * FROM infractions WHERE employee_id = $1 ORDER BY created_date DESC", [
-            employee_id,
-          ])
+          const result = await pool.query(
+            "SELECT * FROM infractions WHERE employee_id = $1 ORDER BY created_date DESC",
+            [employee_id],
+          )
           return result.rows
         }
       } catch (error) {
@@ -1338,6 +1376,25 @@ const resolvers = {
     },
   },
   Mutation: {
+    updateUserRole: async (_: any, { user_id, role }: { user_id: string; role: string }) => {
+      try {
+        const result = await pool.query(
+          "UPDATE users SET role = $1 WHERE id = $2 RETURNING id, role",
+          [role, user_id]
+        )
+        if (result.rows.length === 0) throw new Error("User not found")
+        await logRecentActivity({
+          title: "Rôle utilisateur modifié",
+          description: `Utilisateur ${user_id} rôle mis à jour: ${role}`,
+          type: "employee",
+          urgent: false,
+        })
+        return result.rows[0]
+      } catch (error) {
+        console.error("Error updating user role:", error)
+        throw new Error("Failed to update user role")
+      }
+    },
     // Batch mutation: save/update planning for multiple users
     createOrUpdateManyUserWorkSchedules: async (_: any, { users }: any) => {
       try {
@@ -1481,28 +1538,47 @@ const resolvers = {
         throw new Error("Failed to create work schedule")
       }
     },
-    createManagerWorkSchedule: async (_: any, args: any) => {
+    createManagerWorkSchedule: async (_: any, { employee_id, schedules }: any) => {
       try {
-        const { employee_id, shift_type, job_position, start_time, end_time, date, is_working } = args
-        const result = await pool.query(
-          "INSERT INTO manager_work_schedules (employee_id, shift_type, job_position, start_time, end_time, date, is_working) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-          [employee_id, shift_type, job_position, start_time, end_time, date, is_working],
-        )
-        return result.rows[0]
+        const results = []
+
+        for (const schedule of schedules) {
+          const { date, start_time, end_time, shift_type, job_position, is_working } = schedule
+
+          const result = await pool.query(
+            `INSERT INTO manager_work_schedules 
+             (employee_id, shift_type, job_position, start_time, end_time, date, is_working) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) 
+             RETURNING *`,
+            [employee_id, shift_type, job_position, start_time, end_time, date, is_working],
+          )
+          results.push(result.rows[0])
+        }
+
+        return results
       } catch (error) {
         console.error("Error creating manager work schedule:", error)
         throw new Error("Failed to create manager work schedule")
       }
     },
+
     sendApprovalRequest: async (_: any, args: any) => {
       try {
-        const { type, reference_id, manager_id, data } = args
-        await pool.query("INSERT INTO admin_approvals (type, reference_id, manager_id, data) VALUES ($1, $2, $3, $4)", [
-          type,
-          reference_id,
-          manager_id,
-          data,
-        ])
+        const { type, reference_id, manager_id, employee_id, data, month } = args
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          [type, reference_id, manager_id, data, "pending"],
+        )
+
+        // Send notification alert to admin
+        const notificationMessage = `Manager has proposed planning for employee ${employee_id} for month ${month}`
+        await pool.query(
+          `INSERT INTO notifications (user_id, type, message, reference_id, is_read, created_at) 
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          ["admin", "planning_approval", notificationMessage, reference_id, false],
+        )
+
         return true
       } catch (error) {
         console.error("Error sending approval request:", error)
@@ -2080,8 +2156,8 @@ const resolvers = {
           )
           for (const row of workedRes.rows) {
             const count = Number(row.cnt) || 0
-            if (row.shift_type === 'Doublage') days_worked += count * 2
-            else if (row.shift_type === 'Matin' || row.shift_type === 'Soirée') days_worked += count * 1
+            if (row.shift_type === "Doublage") days_worked += count * 2
+            else if (row.shift_type === "Matin" || row.shift_type === "Soirée") days_worked += count * 1
           }
         } catch (err) {
           // Fallback: use shared work_schedules if per-user table is unavailable
@@ -2094,8 +2170,8 @@ const resolvers = {
           )
           for (const row of workSchedulesRes.rows) {
             const count = Number(row.cnt) || 0
-            if (row.shift_type === 'Doublage') days_worked += count * 2
-            else if (row.shift_type === 'Matin' || row.shift_type === 'Soirée') days_worked += count * 1
+            if (row.shift_type === "Doublage") days_worked += count * 2
+            else if (row.shift_type === "Matin" || row.shift_type === "Soirée") days_worked += count * 1
           }
         }
 
@@ -2122,9 +2198,9 @@ const resolvers = {
           )
           return Number(r.rows[0]?.total ?? 0)
         }
-        const absPrice = await sumPrices('absences')
-        const infPrice = await sumPrices('infractions')
-        const retPrice = await sumPrices('retards')
+        const absPrice = await sumPrices("absences")
+        const infPrice = await sumPrices("infractions")
+        const retPrice = await sumPrices("retards")
         const totalDeductions = absPrice + infPrice + retPrice
         // 4) Compute amount: prime + (price_j * days_worked) - avance - deductions
         const grossAmount = prime + price_j * days_worked
@@ -2149,19 +2225,19 @@ const resolvers = {
         try {
           const e = employee
           await logRecentActivity({
-            title: 'Salaire payé',
-            description: `${e?.prenom ?? ''} ${e?.nom ?? ''} — Période ${period} • ${days_worked} jours × ${fmtMoney(price_j)} + prime ${fmtMoney(prime)} - avance ${fmtMoney(avance)} - déductions ${Math.round(totalDeductions * 100) / 100} = ${fmtMoney(amount)}`,
-            type: 'finance',
+            title: "Salaire payé",
+            description: `${e?.prenom ?? ""} ${e?.nom ?? ""} — Période ${period} • ${days_worked} jours × ${fmtMoney(price_j)} + prime ${fmtMoney(prime)} - avance ${fmtMoney(avance)} - déductions ${Math.round(totalDeductions * 100) / 100} = ${fmtMoney(amount)}`,
+            type: "finance",
             urgent: false,
           })
         } catch (err) {
-          console.error('Failed to log payment activity:', err)
+          console.error("Failed to log payment activity:", err)
         }
 
         return upsert.rows[0]
       } catch (e) {
-        console.error('Error in paySalary:', e)
-        throw new Error('Failed to mark salary as paid')
+        console.error("Error in paySalary:", e)
+        throw new Error("Failed to mark salary as paid")
       }
     },
     markNotificationSeen: async (_: any, { id }: { id: string }) => {

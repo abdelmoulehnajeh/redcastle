@@ -4,6 +4,14 @@ export const DELETE_INFRACTION = gql`
     deleteInfraction(id: $id)
   }
 `
+export const UPDATE_USER_ROLE = gql`
+  mutation UpdateUserRole($user_id: ID!, $role: String!) {
+    updateUserRole(user_id: $user_id, role: $role) {
+      id
+      role
+    }
+  }
+`
 export const DELETE_ABSENCE = gql`
   mutation DeleteAbsence($id: ID!) {
     deleteAbsence(id: $id)
@@ -505,7 +513,11 @@ export const GET_EMPLOYEE = gql`
      location {
        id
        name
-       address
+     }
+     user {
+       id
+       username
+       role
      }
      profile {
        first_name
@@ -514,11 +526,6 @@ export const GET_EMPLOYEE = gql`
        address
        birth_date
        emergency_contact
-     }
-     user {
-       id
-       username
-       role
      }
    }
  }
@@ -697,15 +704,41 @@ query GetWorkSchedulesRange($employee_id: ID!) {
     employee_id
     date
     shift_type
+    job_position
     is_working
     is_worked
     location_id
     location {
       id
       name
+      address
     }
+    created_at
   }
 }
+`
+
+export const GET_WORK_SCHEDULES_MANAGER = gql`
+  query GetWorkSchedulesManager($start: String, $end: String) {
+    workSchedulesManager(start: $start, end: $end) {
+      id
+      employee_id
+      date
+      start_time
+      end_time
+      shift_type
+      job_position
+      is_working
+      is_worked
+      location_id
+      location {
+        id
+        name
+        address
+      }
+      created_at
+    }
+  }
 `
 
 export const CREATE_WORK_SCHEDULE = gql`
@@ -1095,51 +1128,46 @@ export const GET_ADMIN_APPROVALS = gql`
 `
 
 export const CREATE_MANAGER_WORK_SCHEDULE = gql`
- mutation CreateManagerWorkSchedule(
-   $employee_id: ID!
-   $shift_type: String!
-   $job_position: String!
-   $start_time: String!
-   $end_time: String!
-   $date: String!
-   $is_working: Boolean!
- ) {
-   createManagerWorkSchedule(
-     employee_id: $employee_id
-     shift_type: $shift_type
-     job_position: $job_position
-     start_time: $start_time
-     end_time: $end_time
-     date: $date
-     is_working: $is_working
-   ) {
-     id
-     employee_id
-     shift_type
-     job_position
-     start_time
-     end_time
-     date
-     is_working
-     created_at
-   }
- }
+  mutation CreateManagerWorkSchedule(
+    $employee_id: ID!
+    $schedules: [WorkScheduleInput!]!
+  ) {
+    createManagerWorkSchedule(
+      employee_id: $employee_id
+      schedules: $schedules
+    ) {
+      id
+      employee_id
+      shift_type
+      job_position
+      start_time
+      end_time
+      date
+      is_working
+      status
+      created_at
+    }
+  }
 `
 
 export const SEND_APPROVAL_REQUEST = gql`
- mutation SendApprovalRequest(
-   $type: String!
-   $reference_id: ID
-   $manager_id: ID
-   $data: String!
- ) {
-   sendApprovalRequest(
-     type: $type
-     reference_id: $reference_id
-     manager_id: $manager_id
-     data: $data
-   )
- }
+  mutation SendApprovalRequest(
+    $type: String!
+    $reference_id: ID
+    $manager_id: ID!
+    $employee_id: ID!
+    $data: String!
+    $month: String!
+  ) {
+    sendApprovalRequest(
+      type: $type
+      reference_id: $reference_id
+      manager_id: $manager_id
+      employee_id: $employee_id
+      data: $data
+      month: $month
+    )
+  }
 `
 
 export const APPROVE_SCHEDULE_CHANGE = gql`

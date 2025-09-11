@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import Swal from "sweetalert2"
 
 import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
@@ -15,7 +16,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Settings, Lock, Bell, User, Shield, Volume2, VolumeX, Eye, EyeOff } from "lucide-react"
 import { UPDATE_USER_PASSWORD } from "@/lib/graphql-queries"
-import { toast } from "sonner"
 
 type Lang = "fr" | "ar"
 
@@ -72,6 +72,7 @@ type Dict = {
   hidePassword: string
   passwordUpdated: string
   settingsUpdated: string
+  incorrectPassword: string
 }
 
 const translations: Record<Lang, Dict> = {
@@ -128,6 +129,7 @@ const translations: Record<Lang, Dict> = {
     hidePassword: "Masquer le mot de passe",
     passwordUpdated: "Mot de passe mis à jour avec succès",
     settingsUpdated: "Paramètres mis à jour avec succès",
+    incorrectPassword: "Mot de passe actuel incorrect",
   },
   ar: {
     settingsTitle: "الإعدادات",
@@ -182,6 +184,7 @@ const translations: Record<Lang, Dict> = {
     hidePassword: "إخفاء كلمة المرور",
     passwordUpdated: "تم تحديث كلمة المرور بنجاح",
     settingsUpdated: "تم تحديث الإعدادات بنجاح",
+    incorrectPassword: "كلمة المرور الحالية غير صحيحة",
   },
 }
 
@@ -254,7 +257,27 @@ export default function SettingsPage() {
 
   const [updatePassword] = useMutation(UPDATE_USER_PASSWORD, {
     onCompleted: () => {
-      toast.success(t.passwordUpdated)
+      Swal.fire({
+        icon: "success",
+        title: t.passwordUpdated,
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: "#1e293b",
+        color: "#ffffff",
+        iconColor: "#a855f7",
+        customClass: {
+          popup: "rounded-xl shadow-lg",
+          title: "text-white font-semibold",
+          timerProgressBar: "bg-purple-500",
+        },
+        didOpen: (toast) => {
+          toast.addEventListener("mouseenter", Swal.stopTimer)
+          toast.addEventListener("mouseleave", Swal.resumeTimer)
+        },
+      })
       setPasswordForm({
         currentPassword: "",
         newPassword: "",
@@ -263,8 +286,30 @@ export default function SettingsPage() {
       setIsChangingPassword(false)
     },
     onError: (error) => {
-      toast.error(t.updateError)
-      console.error("Password update error:", error)
+      const errorMessage = error.message || t.updateError;
+      const isIncorrectPassword = errorMessage.includes("Current password is incorrect") || errorMessage.includes("Failed to update password");
+      Swal.fire({
+        icon: "error",
+        title: isIncorrectPassword ? t.incorrectPassword : t.updateError,
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: "#1e293b",
+        color: "#ffffff",
+        iconColor: "#ef4444",
+        customClass: {
+          popup: "rounded-xl shadow-lg",
+          title: "text-white font-semibold",
+          timerProgressBar: "bg-red-500",
+        },
+        didOpen: (toast) => {
+          toast.addEventListener("mouseenter", Swal.stopTimer)
+          toast.addEventListener("mouseleave", Swal.resumeTimer)
+        },
+      })
+      setIsChangingPassword(false)
     },
   })
 
@@ -272,17 +317,77 @@ export default function SettingsPage() {
     e.preventDefault()
 
     if (!passwordForm.currentPassword) {
-      toast.error(t.currentPasswordRequired)
+      Swal.fire({
+        icon: "error",
+        title: t.currentPasswordRequired,
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: "#1e293b",
+        color: "#ffffff",
+        iconColor: "#ef4444",
+        customClass: {
+          popup: "rounded-xl shadow-lg",
+          title: "text-white font-semibold",
+          timerProgressBar: "bg-red-500",
+        },
+        didOpen: (toast) => {
+          toast.addEventListener("mouseenter", Swal.stopTimer)
+          toast.addEventListener("mouseleave", Swal.resumeTimer)
+        },
+      })
       return
     }
 
     if (passwordForm.newPassword.length < 6) {
-      toast.error(t.passwordTooShort)
+      Swal.fire({
+        icon: "error",
+        title: t.passwordTooShort,
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: "#1e293b",
+        color: "#ffffff",
+        iconColor: "#ef4444",
+        customClass: {
+          popup: "rounded-xl shadow-lg",
+          title: "text-white font-semibold",
+          timerProgressBar: "bg-red-500",
+        },
+        didOpen: (toast) => {
+          toast.addEventListener("mouseenter", Swal.stopTimer)
+          toast.addEventListener("mouseleave", Swal.resumeTimer)
+        },
+      })
       return
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error(t.passwordMismatch)
+      Swal.fire({
+        icon: "error",
+        title: t.passwordMismatch,
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: "#1e293b",
+        color: "#ffffff",
+        iconColor: "#ef4444",
+        customClass: {
+          popup: "rounded-xl shadow-lg",
+          title: "text-white font-semibold",
+          timerProgressBar: "bg-red-500",
+        },
+        didOpen: (toast) => {
+          toast.addEventListener("mouseenter", Swal.stopTimer)
+          toast.addEventListener("mouseleave", Swal.resumeTimer)
+        },
+      })
       return
     }
 
@@ -324,7 +429,27 @@ export default function SettingsPage() {
       localStorage.setItem("autoLogout", value)
     }
 
-    toast.success(t.settingsUpdated)
+    Swal.fire({
+      icon: "success",
+      title: t.settingsUpdated,
+      toast: true,
+      position: "top-end",
+      showConfirmButton: false,
+      timer: 3000,
+      timerProgressBar: true,
+      background: "#1e293b",
+      color: "#ffffff",
+      iconColor: "#a855f7",
+      customClass: {
+        popup: "rounded-xl shadow-lg",
+        title: "text-white font-semibold",
+        timerProgressBar: "bg-purple-500",
+      },
+      didOpen: (toast) => {
+        toast.addEventListener("mouseenter", Swal.stopTimer)
+        toast.addEventListener("mouseleave", Swal.resumeTimer)
+      },
+    })
   }
 
   const getRoleLabel = (role: string) => {
@@ -532,7 +657,6 @@ export default function SettingsPage() {
 
                 <Separator className="bg-slate-600/50" />
 
-             
               </CardContent>
             </Card3D>
 

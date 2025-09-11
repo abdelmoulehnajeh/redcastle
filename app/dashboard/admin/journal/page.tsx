@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, X, Search } from "lucide-react"
+import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, X, Search, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useQuery, useMutation, useLazyQuery } from "@apollo/client"
 import {
@@ -103,9 +103,9 @@ const translations: Record<Lang, Dict> = {
       { key: "sunday", label: "Dimanche" },
     ],
     shifts: [
-      { value: "Matin", label: "Matin (09:00 - 18:00)" },
-      { value: "Soirée", label: "Soirée (18:00 - 03:00)" },
-      { value: "Doublage", label: "Doublage (09:00 - 03:00)" },
+      { value: "Matin", label: "Matin (10:00 - 18:00)" },
+      { value: "Soirée", label: "Soirée (18:00 - 02:00)" },
+      { value: "Doublage", label: "Doublage (10:00 - 02:00)" },
       { value: "Repos", label: "Repos" },
     ],
     dash: "-",
@@ -289,7 +289,7 @@ function getAbbrev(name: string | undefined | null, max = 3) {
 // Reminder: Backend must use tableName = `${username.toLowerCase()}_id` for per-employee tables.
 
 // ----- Component -----
-export default function AdminJournalPage() {
+export default function JournalPage() {
   const lang = useLang()
   const t = translations[lang]
   const { toast } = useToast()
@@ -319,6 +319,12 @@ export default function AdminJournalPage() {
   const [currentDayAlerts, setCurrentDayAlerts] = useState<Record<string, boolean>>({})
   const [lastApiCall, setLastApiCall] = useState<number>(0)
   const [cachedSchedules, setCachedSchedules] = useState<any[]>([])
+
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set())
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
+  const [bulkShift, setBulkShift] = useState<"Matin" | "Soirée" | "Doublage" | "Repos">("Matin")
+  const [bulkLocation, setBulkLocation] = useState<string>("")
 
   // GraphQL queries/mutations
   const {
@@ -357,8 +363,20 @@ export default function AdminJournalPage() {
     errorPolicy: "all",
   })
   const [getRange, { data: rangeData }] = useLazyQuery(GET_WORK_SCHEDULES_RANGE)
-  const [createUserSchedule] = useMutation(CREATE_USER_WORK_SCHEDULE) // Updated mutation
-  const [updateSchedule] = useMutation(UPDATE_WORK_SCHEDULE)
+  const [createUserSchedule] = useMutation(CREATE_USER_WORK_SCHEDULE, {
+    refetchQueries: [
+      { query: GET_ALL_USER_WORK_SCHEDULES, variables: { start: weekStartStr, end: weekEndStr } },
+      { query: GET_WEEKLY_TEMPLATE_SCHEDULES },
+    ],
+    awaitRefetchQueries: true,
+  })
+  const [updateSchedule] = useMutation(UPDATE_WORK_SCHEDULE, {
+    refetchQueries: [
+      { query: GET_ALL_USER_WORK_SCHEDULES, variables: { start: weekStartStr, end: weekEndStr } },
+      { query: GET_WEEKLY_TEMPLATE_SCHEDULES },
+    ],
+    awaitRefetchQueries: true,
+  })
   const [notifyPlanning] = useMutation(NOTIFY_PLANNING_FOR_EMPLOYEE)
 
   const {
@@ -427,25 +445,23 @@ export default function AdminJournalPage() {
     () => Array.from(new Set(employees.map((emp: any) => emp.location))).filter(Boolean),
     [employees],
   )
-  const filteredEmployees = useMemo(
-    () => {
-      let filtered = employees
-      if (locationFilter && locationFilter !== "all") {
-        filtered = filtered.filter((emp: any) => emp.locationObj?.id === locationFilter)
-      }
-      if (searchTerm.trim()) {
-        const term = searchTerm.trim().toLowerCase()
-        filtered = filtered.filter((emp: any) =>
+  const filteredEmployees = useMemo(() => {
+    let filtered = employees
+    if (locationFilter && locationFilter !== "all") {
+      filtered = filtered.filter((emp: any) => emp.locationObj?.id === locationFilter)
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase()
+      filtered = filtered.filter(
+        (emp: any) =>
           emp.name.toLowerCase().includes(term) ||
           emp.position?.toLowerCase().includes(term) ||
           emp.prenom?.toLowerCase().includes(term) ||
-          emp.nom?.toLowerCase().includes(term)
-        )
-      }
-      return filtered
-    },
-    [employees, locationFilter, searchTerm],
-  )
+          emp.nom?.toLowerCase().includes(term),
+      )
+    }
+    return filtered
+  }, [employees, locationFilter, searchTerm])
 
   const selectedEmployeeData = useMemo(
     () => filteredEmployees.find((emp: any) => emp.id === selectedEmployee),
@@ -485,16 +501,21 @@ export default function AdminJournalPage() {
     }
     try {
       setPlannerLoading(true)
+      // Always refetch all relevant queries before opening planner
+      await refetch()
+      await refetchWeeklyTemplate()
       if (employeeId) {
         setSelectedEmployee(employeeId)
       }
-      // Always fetch the latest planning for the selected month
+      // Always fetch the latest planning for the selected month from backend
       const { first, last } = getMonthInfo(plannerMonth)
       const start = first.toISOString().slice(0, 10)
       const end = last.toISOString().slice(0, 10)
-      const res = await getRange({ variables: { employee_id: targetEmployee, start, end } })
+      const res = await getRange({
+        variables: { employee_id: targetEmployee, start, end },
+        fetchPolicy: "network-only",
+      })
       const existing = (res.data?.workSchedulesRange ?? []) as any[]
-      // DEBUG: Log all raw data coming from the DB for this employee/month
       const prefilled: Record<string, DayAssignment> = {}
       existing.forEach((s: any) => {
         if (s?.date) {
@@ -889,6 +910,66 @@ export default function AdminJournalPage() {
     }
   }
 
+  const startLongPress = (dateStr: string) => {
+    const timer = setTimeout(() => {
+      setIsSelectionMode(true)
+      setSelectedDays(new Set([dateStr]))
+      // Haptic feedback simulation
+      if (navigator.vibrate) {
+        navigator.vibrate(50)
+      }
+    }, 500) // 500ms long press
+    setLongPressTimer(timer)
+  }
+
+  const cancelLongPress = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer)
+      setLongPressTimer(null)
+    }
+  }
+
+  const toggleDaySelection = (dateStr: string) => {
+    if (!isSelectionMode) return
+
+    setSelectedDays((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(dateStr)) {
+        newSet.delete(dateStr)
+      } else {
+        newSet.add(dateStr)
+      }
+      return newSet
+    })
+  }
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false)
+    setSelectedDays(new Set())
+    setBulkShift("Matin")
+    setBulkLocation("")
+  }
+
+  const applyBulkChanges = () => {
+    if (selectedDays.size === 0) return
+
+    const payload: DayAssignment = {
+      shift: bulkShift,
+      location_id: bulkShift === "Repos" ? "0" : bulkLocation || selectedEmployeeData?.locationObj?.id,
+      job_position: selectedEmployeeData?.job_title,
+    }
+
+    selectedDays.forEach((dateStr) => {
+      applyForDay(dateStr, payload)
+    })
+
+    exitSelectionMode()
+    toast({
+      title: "Planification mise à jour",
+      description: `${selectedDays.size} jour(s) mis à jour avec succès`,
+    })
+  }
+
   // Select up to 3 locations for the quick picker
   // const top3Locations = useMemo(() => {
   //   const list: { id: string; name: string }[] = (locationsData?.locations ?? []).map((l: any) => ({
@@ -906,25 +987,43 @@ export default function AdminJournalPage() {
     handleScheduleChange(day, value)
   }
 
-  // Updated: check which employees are missing planning for today using the array structure
-  const checkCurrentDayAssignments = useMemo(() => {
+  const currentWeekStart = useMemo(() => {
     const today = new Date()
-    const todayKey = ymd(today)
+    const dayOfWeek = today.getDay() // 0 (Sunday) to 6 (Saturday)
+    const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) // adjust when day is sunday
+    return new Date(today.setDate(diff))
+  }, [])
+
+  const checkCurrentDayAssignments = useMemo(() => {
     const alerts: Record<string, boolean> = {}
     if (employeesData?.employees && allSchedulesData?.allUserWorkSchedules) {
       const employees = employeesData.employees
       const allSchedules = allSchedulesData.allUserWorkSchedules
+
       employees.forEach((employee: any) => {
-        const todaySchedule = allSchedules.find(
-          (s: any) => String(s.employee_id) === String(employee.id) && normalizeDateKey(s.date) === todayKey,
-        )
-        if (!todaySchedule) {
+        // Check if employee has planning for all 7 days in current week view
+        const currentWeekDates = []
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(currentWeekStart)
+          date.setDate(date.getDate() + i)
+          currentWeekDates.push(ymd(date))
+        }
+
+        // Check if employee has schedule for all days in the current week
+        const hasCompleteWeekPlanning = currentWeekDates.every((dateKey) => {
+          return allSchedules.some(
+            (s: any) => String(s.employee_id) === String(employee.id) && normalizeDateKey(s.date) === dateKey,
+          )
+        })
+
+        // Only show alert if employee is missing planning for any day in the current week
+        if (!hasCompleteWeekPlanning) {
           alerts[employee.id] = true
         }
       })
     }
     return alerts
-  }, [employeesData, allSchedulesData])
+  }, [employeesData, allSchedulesData, currentWeekStart])
 
   useEffect(() => {
     setCurrentDayAlerts(checkCurrentDayAssignments)
@@ -1099,10 +1198,7 @@ export default function AdminJournalPage() {
                     const needsCurrentDayUpdate = currentDayAlerts[emp.id]
 
                     return (
-                      <tr
-                        key={emp.id}
-                        className={`border-b hover:bg-white/5 transition-colors ${needsCurrentDayUpdate ? "bg-orange-900/20 border-orange-500/30" : ""}`}
-                      >
+                      <tr key={emp.id} className="border-b hover:bg-white/5 transition-colors">
                         <td className="p-3">
                           <div className="flex items-center space-x-3">
                             <Avatar className="w-8 h-8">
@@ -1118,9 +1214,6 @@ export default function AdminJournalPage() {
                                 <p className="font-medium text-sm truncate" dir="auto">
                                   {emp.name}
                                 </p>
-                                {needsCurrentDayUpdate && (
-                                  <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0" />
-                                )}
                               </div>
                               <p className="text-xs text-muted-foreground truncate" dir="auto">
                                 {emp.position || t.dash}
@@ -1129,12 +1222,12 @@ export default function AdminJournalPage() {
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  className={`${needsCurrentDayUpdate ? "bg-orange-700/40 hover:bg-orange-700/50 text-orange-100 border border-orange-500/40" : "bg-emerald-700/30 hover:bg-emerald-700/40 text-emerald-100 border border-emerald-500/30"}`}
+                                  className="bg-emerald-700/30 hover:bg-emerald-700/40 text-emerald-100 border border-emerald-500/30"
                                   onClick={() => {
                                     openPlanner(emp.id)
                                   }}
                                 >
-                                  {needsCurrentDayUpdate ? "Planning Urgent" : "Planning"}
+                                  Planning
                                 </Button>
                               </div>
                             </div>
@@ -1151,10 +1244,7 @@ export default function AdminJournalPage() {
                           const todayNeedsUpdate = isToday && needsCurrentDayUpdate
 
                           return (
-                            <td
-                              key={day.key}
-                              className={`text-center p-3 ${todayNeedsUpdate ? "bg-orange-900/30 border border-orange-500/30 rounded" : ""}`}
-                            >
+                            <td key={day.key} className="text-center p-3">
                               {schedule ? (
                                 <div className="space-y-1">
                                   <Badge
@@ -1272,33 +1362,64 @@ export default function AdminJournalPage() {
 
                   const isToday = ds === ymd(new Date())
                   const todayNeedsUpdate = isToday && selectedEmployee && currentDayAlerts[selectedEmployee]
+                  const isSelected = selectedDays.has(ds)
 
                   return (
-                    <Popover key={ds} open={editingDay === ds} onOpenChange={(o) => setEditingDay(o ? ds : null)}>
+                    <Popover
+                      key={ds}
+                      open={!isSelectionMode && editingDay === ds}
+                      onOpenChange={(o) => setEditingDay(o ? ds : null)}
+                    >
                       <PopoverTrigger asChild>
                         <button
-                          className={`relative rounded-lg px-1 pt-2 pb-4 text-left transition-colors h-16 sm:h-20 w-full ${
-                            todayNeedsUpdate
-                              ? "bg-orange-600/20 hover:bg-orange-600/30 border-2 border-orange-500/50 animate-pulse"
-                              : isToday
-                                ? "bg-blue-600/20 hover:bg-blue-600/30 border-2 border-blue-500/50"
-                                : "bg-white/5 hover:bg-white/10 border border-white/10"
-                          }`}
-                          onClick={() => setEditingDay(ds)}
+                          className={`relative rounded-lg px-1 pt-2 pb-4 text-left transition-all duration-200 h-16 sm:h-20 w-full ${
+                            isSelected
+                              ? "bg-blue-500/40 border-2 border-blue-400 scale-95 shadow-lg shadow-blue-500/25"
+                              : todayNeedsUpdate
+                                ? "bg-orange-600/20 hover:bg-orange-600/30 border-2 border-orange-500/50 animate-pulse"
+                                : isToday
+                                  ? "bg-blue-600/20 hover:bg-blue-600/30 border-2 border-blue-500/50"
+                                  : "bg-white/5 hover:bg-white/10 border border-white/10"
+                          } ${isSelectionMode ? "cursor-pointer" : ""}`}
+                          onMouseDown={() => !isSelectionMode && startLongPress(ds)}
+                          onMouseUp={cancelLongPress}
+                          onMouseLeave={cancelLongPress}
+                          onTouchStart={() => !isSelectionMode && startLongPress(ds)}
+                          onTouchEnd={cancelLongPress}
+                          onClick={() => {
+                            if (isSelectionMode) {
+                              toggleDaySelection(ds)
+                            } else {
+                              cancelLongPress()
+                              setEditingDay(ds)
+                            }
+                          }}
                         >
                           <span
                             className={`text-xs font-medium block ${
-                              todayNeedsUpdate ? "text-orange-200" : isToday ? "text-blue-200" : "text-slate-200"
+                              isSelected
+                                ? "text-blue-100"
+                                : todayNeedsUpdate
+                                  ? "text-orange-200"
+                                  : isToday
+                                    ? "text-blue-200"
+                                    : "text-slate-200"
                             }`}
                           >
                             {d.getDate()}
                           </span>
 
-                          {isToday && (
+                          {isSelected && (
+                            <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+
+                          {!isSelected && isToday && (
                             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
                           )}
 
-                          {todayNeedsUpdate && (
+                          {!isSelected && todayNeedsUpdate && (
                             <AlertTriangle className="absolute top-1 right-1 w-3 h-3 text-orange-400" />
                           )}
 
@@ -1427,7 +1548,80 @@ export default function AdminJournalPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-white/10">
+            {isSelectionMode && (
+              <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-900 via-slate-900/95 to-slate-900/80 backdrop-blur-md border-t border-white/10 p-4 z-50">
+                <div className="max-w-6xl mx-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-medium text-white">
+                        {selectedDays.size} jour{selectedDays.size > 1 ? "s" : ""} sélectionné
+                        {selectedDays.size > 1 ? "s" : ""}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={exitSelectionMode}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Annuler
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-slate-300">Type de shift:</label>
+                      <Select value={bulkShift} onValueChange={(value: any) => setBulkShift(value)}>
+                        <SelectTrigger className="w-32 bg-white/5 border-white/10 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-white/10">
+                          {shifts.map((shift) => (
+                            <SelectItem key={shift.value} value={shift.value} className="text-white hover:bg-white/10">
+                              {shift.value}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {bulkShift !== "Repos" && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-slate-300">Restaurant:</label>
+                        <Select value={bulkLocation} onValueChange={setBulkLocation}>
+                          <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white">
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                          <SelectContent className="bg-slate-900 border-white/10">
+                            {allLocationsList.map((location: any) => (
+                              <SelectItem
+                                key={location.id}
+                                value={location.id}
+                                className="text-white hover:bg-white/10"
+                              >
+                                {location.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={applyBulkChanges}
+                      disabled={selectedDays.size === 0 || (bulkShift !== "Repos" && !bulkLocation)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Appliquer à {selectedDays.size} jour{selectedDays.size > 1 ? "s" : ""}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
               <Button
                 variant="outline"
                 onClick={clearAllMonth}
@@ -1463,7 +1657,10 @@ export default function AdminJournalPage() {
                 </Button>
 
                 <Button
-                  onClick={saveMonth}
+                  onClick={async () => {
+                    await saveMonth()
+                    setPlannerOpen(false)
+                  }}
                   disabled={plannerLoading}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >

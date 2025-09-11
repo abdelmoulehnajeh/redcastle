@@ -42,6 +42,7 @@ import {
   DELETE_ABSENCE,
   DELETE_RETARD,
   DELETE_TENUE_TRAVAIL,
+  UPDATE_USER_ROLE,
 } from "@/lib/graphql-queries"
 import { toast } from "sonner"
 import { useLang } from "@/lib/i18n"
@@ -61,12 +62,35 @@ export default function EmployeeDetailsPage() {
   const [editData, setEditData] = useState<any>({})
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false)
 
+  // Role state for user
+  const [role, setRole] = useState<string>("")
+  const [isSaving, setIsSaving] = useState(false)
+
   const [disciplinaryForms, setDisciplinaryForms] = useState({
     infraction: { name: "", price: "", description: "", date: undefined as Date | undefined },
     absence: { name: "", price: "", description: "", date: undefined as Date | undefined },
     retard: { name: "", price: "", description: "", date: undefined as Date | undefined },
     tenue: { name: "", price: "", description: "", date: undefined as Date | undefined },
   })
+
+  // Mutation for updating user role
+  const [updateUserRole] = useMutation(UPDATE_USER_ROLE)
+
+  // Handler for updating role
+  const handleRoleUpdate = async () => {
+    if (!data?.employee?.user?.id || !role) return
+    setIsSaving(true)
+    try {
+      await updateUserRole({
+        variables: { user_id: data.employee.user.id, role },
+      })
+      toast.success("Rôle mis à jour avec succès")
+      refetch()
+    } catch (err) {
+      toast.error("Erreur lors de la mise à jour du rôle")
+    }
+    setIsSaving(false)
+  }
 
   // Single GraphQL query to get all employee data
   const { data, loading, refetch } = useQuery(GET_EMPLOYEE_DETAILS, {
@@ -395,6 +419,7 @@ export default function EmployeeDetailsPage() {
       retard: employee?.retard || 0,
       avance: employee?.avance || 0,
       tenu_de_travail: employee?.tenu_de_travail || 0,
+      role: employee?.user?.role || "employee",
     })
     setIsEditing(true)
   }
@@ -454,6 +479,13 @@ export default function EmployeeDetailsPage() {
             currentPassword: "password123", // Default password - in real app, ask for current password
             newPassword: editData.password.trim(),
           },
+        })
+      }
+
+      // Update role if changed
+      if ((editData.role ?? role) && employee?.user?.role !== (editData.role ?? role)) {
+        await updateUserRole({
+          variables: { user_id: employee.user.id, role: editData.role ?? role },
         })
       }
 
@@ -863,6 +895,33 @@ export default function EmployeeDetailsPage() {
                         return employee.location?.name || getLocationName(employee.location?.id) || "Non assigné"
                       })()}
                     </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm font-medium text-muted-foreground" dir="auto">
+                  Rôle
+                </Label>
+                {isEditing ? (
+                  <select
+                    className="w-full p-2 rounded border bg-background text-foreground"
+                    value={editData.role ?? employee?.user?.role ?? role}
+                    onChange={e => setEditData({ ...editData, role: e.target.value })}
+                    disabled={isSaving}
+                  >
+                    <option value="employee">Employé</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                ) : (
+                  <div className="text-sm sm:text-base font-semibold text-foreground" dir="auto">
+                      {(() => {
+                        const roleValue = editData.role ?? employee?.user?.role;
+                        if (roleValue === "admin") return "Admin";
+                        if (roleValue === "manager") return "Manager";
+                        return "Employé";
+                      })()}
                   </div>
                 )}
               </div>

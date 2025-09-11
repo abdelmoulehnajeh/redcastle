@@ -19,7 +19,13 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 
 import { useAuth } from "@/lib/auth-context"
-import { GET_EMPLOYEE, GET_TIME_ENTRIES, GET_WORK_SCHEDULES_RANGE, GET_EMPLOYEE_DISCIPLINARY_DATA, GET_LOCATIONS } from "@/lib/graphql-queries"
+import {
+  GET_EMPLOYEE,
+  GET_TIME_ENTRIES,
+  GET_WORK_SCHEDULES_RANGE,
+  GET_EMPLOYEE_DISCIPLINARY_DATA,
+  GET_LOCATIONS,
+} from "@/lib/graphql-queries"
 import { useLang, type Lang } from "@/lib/i18n"
 
 type Dict = {
@@ -244,6 +250,20 @@ function normalizeDateKey(input: unknown): string {
   return ""
 }
 
+function getMonthInfo(date: Date) {
+  const year = date.getFullYear()
+  const month = date.getMonth() // 0-11
+  const first = new Date(year, month, 1)
+  const last = new Date(year, month + 1, 0)
+  // We use Monday as first day of week (1=Mon,...,7=Sun)
+  const firstWeekday = (first.getDay() + 6) % 7 // 0..6 with 0=Mon
+  const daysInMonth = last.getDate()
+  const grid: (Date | null)[] = []
+  for (let i = 0; i < firstWeekday; i++) grid.push(null)
+  for (let d = 1; d <= daysInMonth; d++) grid.push(new Date(year, month, d))
+  return { year, month, first, last, grid, daysInMonth }
+}
+
 export default function FinancePage() {
   const { user } = useAuth()
   const { lang } = useLang()
@@ -294,8 +314,7 @@ export default function FinancePage() {
   })
   const { data: locationsData } = useQuery(GET_LOCATIONS, { fetchPolicy: "cache-first" })
   const allLocationsList = useMemo(
-    () =>
-      locationsData?.locations.map((l: any) => ({ id: String(l.id), name: l.name })) || [],
+    () => locationsData?.locations.map((l: any) => ({ id: String(l.id), name: l.name })) || [],
     [locationsData],
   )
   const timeEntries = teData?.timeEntries || []
@@ -331,16 +350,20 @@ export default function FinancePage() {
     for (const s of monthSchedules) {
       if (s?.is_worked === true) {
         const dateKey = ymd(new Date(normalizeDateKey(s.date)))
-        const dots = s.shift_type === "Doublage" ? 2 : (s.shift_type === "Matin" || s.shift_type === "Soirée" ? 1 : 0)
+        const dots = s.shift_type === "Doublage" ? 2 : s.shift_type === "Matin" || s.shift_type === "Soirée" ? 1 : 0
         map.set(dateKey, Math.max(map.get(dateKey) || 0, dots))
       }
     }
     return map
   }, [monthSchedules])
 
-  const daysInMonth = new Date(Number(selectedYm.split("-")[0]), Number(selectedYm.split("-")[1]), 0).getDate()
+  const monthInfo = useMemo(() => getMonthInfo(new Date(`${selectedYm}-01`)), [selectedYm])
+  const grid = monthInfo.grid
+
+  const daysInMonth = monthInfo.daysInMonth
   const [singleDays, doubleDays] = useMemo(() => {
-    let single = 0, dbl = 0
+    let single = 0,
+      dbl = 0
     for (const s of monthSchedules) {
       if (s?.is_worked === true) {
         if (s.shift_type === "Doublage") dbl++
@@ -360,8 +383,14 @@ export default function FinancePage() {
   const sumPrices = (arr: any[]) => arr.reduce((s, it) => s + (Number(it.price) || 0), 0)
   const totalDeductions = sumPrices(discInfractions) + sumPrices(discAbsences) + sumPrices(discRetards)
   const weightedDays = singleDays + doubleDays * 2
-  const totalSalary = Math.max(0, Math.round(((price_j * weightedDays + prime - avance - totalDeductions) || 0) * 100) / 100)
-  const performanceScore = Math.max(0, Math.min(100, 100 - ((discInfractions.length) * 5 + (discAbsences.length) * 3 + (discRetards.length) * 2)))
+  const totalSalary = Math.max(
+    0,
+    Math.round((price_j * weightedDays + prime - avance - totalDeductions || 0) * 100) / 100,
+  )
+  const performanceScore = Math.max(
+    0,
+    Math.min(100, 100 - (discInfractions.length * 5 + discAbsences.length * 3 + discRetards.length * 2)),
+  )
 
   function generateCalendarCells(ym: string): { type: "blank" | "day"; day?: number }[] {
     const first = new Date(`${ym}-01T00:00:00`)
@@ -378,21 +407,24 @@ export default function FinancePage() {
   }
 
   return (
-    <div className="relative" dir="ltr">
+    <div className="min-h-screen relative overflow-hidden" dir="ltr">
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-purple-900/30 via-slate-900/30 to-slate-950" />
 
-      <main className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6">
+      <main className="space-y-4 sm:space-y-6 lg:space-y-8 p-3 sm:p-4 lg:p-6 relative z-20 max-w-screen-xl mx-auto">
         {/* Header */}
-        <div className="rounded-2xl border bg-gradient-to-br from-slate-900/80 to-slate-800/70 border-slate-700 p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-              <DollarSign className="size-5 text-white" />
+        <div className="rounded-2xl border bg-gradient-to-br from-slate-900/80 to-slate-800/70 border-slate-700 p-4 sm:p-6 lg:p-8">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="size-10 sm:size-12 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+              <DollarSign className="size-5 sm:size-6 text-white" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-lg sm:text-2xl font-semibold tracking-tight text-white" dir="auto">
+            <div className="min-w-0 flex-1">
+              <h1
+                className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-white truncate"
+                dir="auto"
+              >
                 {t.headerTitle}
               </h1>
-              <p className="text-xs sm:text-sm text-white/80" dir="auto">
+              <p className="text-xs sm:text-sm md:text-base text-white/80" dir="auto">
                 {t.headerSubtitle}
               </p>
             </div>
@@ -401,17 +433,17 @@ export default function FinancePage() {
 
         {/* Salary Overview */}
         <Card className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 px-4 sm:px-6">
             <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2" dir="auto">
               <DollarSign className="size-5" />
               {t.salaryTitle}
             </CardTitle>
-            <CardDescription className="text-slate-300" dir="auto">
+            <CardDescription className="text-slate-300 text-xs sm:text-sm" dir="auto">
               {t.salarySubtitle}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <CardContent className="px-4 sm:px-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
               {[
                 {
                   title: t.baseSalary,
@@ -442,16 +474,16 @@ export default function FinancePage() {
                   color: "text-blue-500",
                 },
               ].map((item, index) => (
-                <div key={index} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div key={index} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4">
                   <div className="flex items-center justify-between">
                     <div className={`flex items-center gap-2 ${align}`}>
                       <item.icon className={`size-4 ${item.color}`} />
-                      <span className="text-sm font-medium text-slate-300" dir="auto">
+                      <span className="text-xs sm:text-sm font-medium text-slate-300 truncate" dir="auto">
                         {item.title}
                       </span>
                     </div>
                   </div>
-                  <div className={`text-2xl font-bold text-white ${align}`}>{item.value}</div>
+                  <div className={`text-lg sm:text-2xl font-bold text-white ${align}`}>{item.value}</div>
                   <div className={`text-xs text-slate-400 ${align}`} dir="auto">
                     {item.description}
                   </div>
@@ -459,22 +491,22 @@ export default function FinancePage() {
               ))}
             </div>
 
-            <div className="mt-6 p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+            <div className="mt-4 sm:mt-6 p-3 sm:p-4 rounded-xl border border-slate-800 bg-slate-900/60">
               {isLoading ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="h-4 w-40 animate-pulse rounded bg-slate-700/50" />
-                    <div className="h-7 w-24 animate-pulse rounded bg-slate-700/50" />
+                    <div className="h-4 w-32 sm:w-40 animate-pulse rounded bg-slate-700/50" />
+                    <div className="h-6 sm:h-7 w-20 sm:w-24 animate-pulse rounded bg-slate-700/50" />
                   </div>
-                  <div className="h-3 w-56 animate-pulse rounded bg-slate-700/40" />
+                  <div className="h-3 w-48 sm:w-56 animate-pulse rounded bg-slate-700/40" />
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-300" dir="auto">
+                    <span className="text-xs sm:text-sm font-medium text-slate-300" dir="auto">
                       {t.netSalary}
                     </span>
-                    <span className="text-2xl font-bold text-white">
+                    <span className="text-lg sm:text-2xl font-bold text-white">
                       <Money amount={totalSalary} />
                     </span>
                   </div>
@@ -489,18 +521,18 @@ export default function FinancePage() {
 
         {/* Presence monthly calendar */}
         <Card className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur text-white">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 px-4 sm:px-6">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="min-w-0 flex-1">
                 <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2" dir="auto">
                   <CalendarIcon className="size-5" />
                   {t.presenceTitle}
                 </CardTitle>
-                <CardDescription className="text-slate-300" dir="auto">
+                <CardDescription className="text-slate-300 text-xs sm:text-sm" dir="auto">
                   {t.presenceSubtitle(monthLabel(selectedYm, locale))}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -522,21 +554,21 @@ export default function FinancePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex items-center gap-4 text-xs text-slate-300">
-              <div className="flex items-center gap-2">
+          <CardContent className="px-4 sm:px-6">
+            <div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-slate-300">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                 <span className="inline-block size-2 rounded-full bg-emerald-400" />
                 <span dir="auto">
                   {t.workedDays}: {workedDays}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                 <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" />
                 <span dir="auto">
                   {t.doubleShifts}: {doubleShifts}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-slate-600/10 border border-slate-600/20">
                 <span className="inline-block size-2 rounded-full bg-slate-600" />
                 <span dir="auto">
                   {t.offDays}: {offDays}
@@ -544,76 +576,78 @@ export default function FinancePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-2 sm:gap-3">
-              {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((d) => (
-                <div key={d} className="text-xs sm:text-sm text-slate-300 text-center">
-                  {d}
-                </div>
-              ))}
+            <div className="w-full">
+              <div className="grid grid-cols-7 gap-1 text-xs text-slate-400 mb-2">
+                <div className="text-center">Lun</div>
+                <div className="text-center">Mar</div>
+                <div className="text-center">Mer</div>
+                <div className="text-center">Jeu</div>
+                <div className="text-center">Ven</div>
+                <div className="text-center">Sam</div>
+                <div className="text-center">Dim</div>
+              </div>
 
-              {(() => {
-                const cells: { type: "blank" | "day"; day?: number }[] = (() => {
-                  const first = new Date(`${selectedYm}-01T00:00:00`)
-                  const startWeekday = (first.getDay() + 6) % 7 // Monday=0
-                  const end = new Date(first)
-                  end.setMonth(end.getMonth() + 1)
-                  end.setDate(0)
-                  const last = end.getDate()
-
-                  const arr: { type: "blank" | "day"; day?: number }[] = []
-                  for (let i = 0; i < startWeekday; i++) arr.push({ type: "blank" })
-                  for (let d = 1; d <= last; d++) arr.push({ type: "day", day: d })
-                  return arr
-                })()
-
-                return cells.map((cell, idx) => {
-                  if (cell.type === "blank") {
-                    return <div key={`blank-${idx}`} className="h-16 sm:h-20 rounded-xl bg-transparent" />
-                  }
-                  const ds = `${selectedYm}-${String(cell.day).padStart(2, "0")}`
-                  const assign = dayShifts[cell.day!]
+              <div className="grid grid-cols-7 gap-1">
+                {grid.map((d, idx) => {
+                  if (!d) return <div key={`empty-${idx}`} className="h-16 sm:h-20" />
+                  const ds = ymd(d)
+                  const assign = dayShifts[d.getDate()]
                   const shift = assign?.shift
                   const isDouble = shift === "Doublage"
                   const isSimple = shift === "Matin" || shift === "Soirée"
                   const isRepos = !shift || shift === "Repos"
-                  const dots = isDouble ? 2 : isSimple ? 1 : 0
+
+                  const isToday = ds === ymd(new Date())
+
                   return (
                     <div
-                      key={`day-${cell.day}`}
-                      className={`h-16 sm:h-20 rounded-xl border border-white/10 relative overflow-hidden ${
-                        dots > 0 ? "bg-emerald-500/5" : "bg-slate-800/30"
+                      key={ds}
+                      className={`relative rounded-lg px-1 pt-2 pb-4 text-left transition-colors h-16 sm:h-20 w-full cursor-default ${
+                        isToday
+                          ? "bg-blue-600/20 hover:bg-blue-600/30 border-2 border-blue-500/50"
+                          : "bg-white/5 hover:bg-white/10 border border-white/10"
                       }`}
                     >
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/5" />
+                      <span className={`text-xs font-medium block ${isToday ? "text-blue-200" : "text-slate-200"}`}>
+                        {d.getDate()}
+                      </span>
+
+                      {isToday && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-400 rounded-full"></span>}
+
+                      <div className="absolute left-1 bottom-1 flex flex-col items-start gap-0.5">
+                        {isDouble ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                          </>
+                        ) : isSimple ? (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                        ) : isRepos ? (
+                          <span className="w-2 h-2 rounded-full bg-slate-500 shadow-[0_0_8px_rgba(100,116,139,0.6)]" />
+                        ) : null}
                       </div>
-                      <div className="p-2 flex flex-col h-full">
-                        <div className="text-xs sm:text-sm text-white/90">{cell.day}</div>
-                        <div className="mt-auto flex gap-1">
-                          {dots === 0 && <span className="inline-block size-2 rounded-full bg-slate-600" />}
-                          {dots >= 1 && <span className="inline-block size-2 rounded-full bg-emerald-400" />}
-                          {dots >= 2 && (
-                            <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" />
-                          )}
-                        </div>
-                        {assign?.location_id && shift !== "Repos" && (
-                          <span
-                            className="absolute right-1 bottom-1 text-[9px] px-1 py-0.5 rounded-md bg-slate-800/70 text-slate-100 border border-white/10"
-                            title={allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? ""}
-                          >
-                            {getAbbrev(allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? "", 3)}
-                          </span>
-                        )}
-                        {isRepos && (
-                          <span className="absolute right-1 bottom-1 text-[10px] font-bold text-white bg-gray-600/80 px-1 rounded" title="Repos">
-                            REP
-                          </span>
-                        )}
-                      </div>
+
+                      {assign?.location_id && shift !== "Repos" && (
+                        <span
+                          className="absolute right-1 bottom-1 text-[9px] px-1 py-0.5 rounded-md bg-slate-800/70 text-slate-100 border border-white/10"
+                          title={allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? ""}
+                        >
+                          {getAbbrev(allLocationsList.find((l: any) => l.id === assign.location_id)?.name ?? "", 3)}
+                        </span>
+                      )}
+
+                      {isRepos && (
+                        <span
+                          className="absolute right-1 bottom-1 text-[10px] font-bold text-white bg-gray-600/80 px-1 rounded"
+                          title="Repos"
+                        >
+                          REP
+                        </span>
+                      )}
                     </div>
                   )
-                })
-              })()}
+                })}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -621,18 +655,18 @@ export default function FinancePage() {
         {/* Performance & Disciplinary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           <Card className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 px-4 sm:px-6">
               <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2" dir="auto">
                 <TrendingUp className="size-5" />
                 {t.performanceTitle}
               </CardTitle>
-              <CardDescription className="text-slate-300" dir="auto">
+              <CardDescription className="text-slate-300 text-xs sm:text-sm" dir="auto">
                 {t.performanceSubtitle}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
               <div className="text-center">
-                <div className="text-4xl font-bold text-white mb-2 tabular-nums" dir="ltr">
+                <div className="text-3xl sm:text-4xl font-bold text-white mb-2 tabular-nums" dir="ltr">
                   {performanceScore}%
                 </div>
                 <Badge
@@ -665,16 +699,16 @@ export default function FinancePage() {
           </Card>
 
           <Card className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 px-4 sm:px-6">
               <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2" dir="auto">
                 <AlertTriangle className="size-5" />
                 {t.disciplinaryTitle}
               </CardTitle>
-              <CardDescription className="text-slate-300" dir="auto">
+              <CardDescription className="text-slate-300 text-xs sm:text-sm" dir="auto">
                 {t.disciplinarySubtitle}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 px-4 sm:px-6">
               {[
                 { title: t.infractions, value: (discData?.infractions || []).length, color: "text-rose-500" },
                 { title: t.absences, value: (discData?.absences || []).length, color: "text-orange-500" },
@@ -684,12 +718,12 @@ export default function FinancePage() {
                   <div className={`flex items-center justify-between ${align}`}>
                     <div className="flex items-center gap-2">
                       <span className={`size-4 ${item.color}`} />
-                      <span className="text-sm font-medium text-slate-300" dir="auto">
+                      <span className="text-xs sm:text-sm font-medium text-slate-300" dir="auto">
                         {item.title}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-lg font-bold text-white tabular-nums" dir="ltr">
+                      <span className="text-base sm:text-lg font-bold text-white tabular-nums" dir="ltr">
                         {item.value}
                       </span>
                     </div>
@@ -702,23 +736,23 @@ export default function FinancePage() {
 
         {/* Additional Info */}
         <Card className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 px-4 sm:px-6">
             <CardTitle className="text-white text-base sm:text-lg" dir="auto">
               {t.additionalInfoTitle}
             </CardTitle>
-            <CardDescription className="text-slate-300" dir="auto">
+            <CardDescription className="text-slate-300 text-xs sm:text-sm" dir="auto">
               {t.additionalInfoSubtitle}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 {Array.from({ length: 2 }).map((_, i) => (
                   <div key={`info-skel-${i}`} className="space-y-3">
-                    <div className="h-5 w-40 animate-pulse rounded bg-slate-700/50" />
+                    <div className="h-4 w-32 sm:w-40 animate-pulse rounded bg-slate-700/50" />
                     <div className="flex items-center justify-between p-3 rounded-lg border border-slate-800 bg-slate-900/60">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-700/40" />
-                      <div className="h-6 w-20 animate-pulse rounded bg-slate-700/40" />
+                      <div className="h-3 sm:h-4 w-24 sm:w-32 animate-pulse rounded bg-slate-700/40" />
+                      <div className="h-5 sm:h-6 w-16 sm:w-20 animate-pulse rounded bg-slate-700/40" />
                     </div>
                   </div>
                 ))}
@@ -726,14 +760,14 @@ export default function FinancePage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-3">
-                  <h4 className={`font-semibold text-white ${align}`} dir="auto">
+                  <h4 className={`font-semibold text-white text-sm sm:text-base ${align}`} dir="auto">
                     {t.uniform}
                   </h4>
                   <div className="flex items-center justify-between p-3 rounded-lg border border-slate-800 bg-slate-900/60">
-                    <span className="text-sm text-slate-300" dir="auto">
+                    <span className="text-xs sm:text-sm text-slate-300" dir="auto">
                       {t.uniformsProvided}
                     </span>
-                    <Badge variant="outline" className="bg-slate-800/50 text-slate-200" dir="auto">
+                    <Badge variant="outline" className="bg-slate-800/50 text-slate-200 text-xs" dir="auto">
                       <span className="tabular-nums" dir="ltr">
                         {Number(employee?.tenu_de_travail ?? 0)}
                       </span>{" "}
@@ -743,16 +777,16 @@ export default function FinancePage() {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className={`font-semibold text-white ${align}`} dir="auto">
+                  <h4 className={`font-semibold text-white text-sm sm:text-base ${align}`} dir="auto">
                     {t.status}
                   </h4>
                   <div className="flex items-center justify-between p-3 rounded-lg border border-slate-800 bg-slate-900/60">
-                    <span className="text-sm text-slate-300" dir="auto">
+                    <span className="text-xs sm:text-sm text-slate-300" dir="auto">
                       {t.currentStatus}
                     </span>
                     <Badge
                       variant={String(employee?.status).toLowerCase() === "active" ? "default" : "secondary"}
-                      className={String(employee?.status).toLowerCase() === "active" ? "bg-emerald-600 text-white" : ""}
+                      className={`text-xs ${String(employee?.status).toLowerCase() === "active" ? "bg-emerald-600 text-white" : ""}`}
                       dir="auto"
                     >
                       {String(employee?.status).toLowerCase() === "active" ? t.active : t.inactive}

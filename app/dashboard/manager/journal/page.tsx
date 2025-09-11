@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useQuery, useMutation } from "@apollo/client"
 import {
   GET_EMPLOYEES,
-  GET_WORK_SCHEDULES,
+  GET_WORK_SCHEDULES_MANAGER,
   CREATE_MANAGER_WORK_SCHEDULE,
   SEND_APPROVAL_REQUEST,
   GET_LOCATIONS,
@@ -238,7 +238,7 @@ export default function ManagerJournalPage() {
     error: schedulesError,
     loading: schedulesLoading,
     refetch,
-  } = useQuery(GET_WORK_SCHEDULES)
+  } = useQuery(GET_WORK_SCHEDULES_MANAGER)
 
   const [createManagerSchedule] = useMutation(CREATE_MANAGER_WORK_SCHEDULE)
   const [sendApprovalRequest] = useMutation(SEND_APPROVAL_REQUEST)
@@ -251,7 +251,7 @@ export default function ManagerJournalPage() {
   }
 
   function getEmployeeSchedule(employeeId: string, dayKey: DayKey) {
-    if (!schedulesData?.workSchedules) return null
+    if (!schedulesData?.workSchedulesManager) return null
 
     const today = new Date()
     const dayIndex = daysOfWeek.findIndex((d) => d.key === dayKey)
@@ -261,7 +261,7 @@ export default function ManagerJournalPage() {
     date.setDate(monday.getDate() + dayIndex)
     date.setHours(0, 0, 0, 0)
 
-    const sched = schedulesData.workSchedules.find((s: any) => {
+    const sched = schedulesData.workSchedulesManager.find((s: any) => {
       if (s.employee_id !== employeeId) return false
       let schedDate: Date
       if (/^\d+$/.test(String(s.date))) {
@@ -311,7 +311,7 @@ export default function ManagerJournalPage() {
       return
     }
 
-    if (!user?.username) {
+    if (!user?.id) {
       toast({
         title: t.toastErrorTitle,
         description: "Manager information not available",
@@ -321,65 +321,78 @@ export default function ManagerJournalPage() {
     }
 
     try {
-      const createdSchedules = await Promise.all(
-        daysOfWeek.map(async (day) => {
-          const shift = schedule[day.key]
-          if (!shift) return null
+      const schedules = daysOfWeek.map((day) => {
+        const shift = schedule[day.key] || SHIFT_VALUE_OFF
 
-          const today = new Date()
-          const dayIndex = daysOfWeek.findIndex((d) => d.key === day.key)
-          const monday = new Date(today)
-          monday.setDate(today.getDate() - today.getDay() + 1)
-          const date = new Date(monday)
-          date.setDate(monday.getDate() + dayIndex)
-          const dateString = date.toISOString().split("T")[0]
+        const today = new Date()
+        const dayIndex = daysOfWeek.findIndex((d) => d.key === day.key)
+        const monday = new Date(today)
+        monday.setDate(today.getDate() - today.getDay() + 1)
+        const date = new Date(monday)
+        date.setDate(monday.getDate() + dayIndex)
+        const dateString = date.toISOString().split("T")[0]
 
-          let start_time: string | null = null
-          let end_time: string | null = null
-          if (shift === SHIFT_VALUE_MORNING) {
-            start_time = "09:00"
-            end_time = "18:00"
-          } else if (shift === SHIFT_VALUE_EVENING) {
-            start_time = "18:00"
-            end_time = "03:00"
-          } else if (shift === SHIFT_VALUE_DOUBLE) {
-            start_time = "09:00"
-            end_time = "03:00"
-          }
+        let start_time: string | null = null
+        let end_time: string | null = null
+        let is_working = true
 
-          const result = await createManagerSchedule({
-            variables: {
-              employee_id: selectedEmployee,
-              date: dateString,
-              shift_type: shift,
-              job_position: selectedEmployeeData?.job_title || "",
-              is_working: shift !== SHIFT_VALUE_OFF,
-              start_time,
-              end_time,
-              status: "manager",
-              trait: "manager",
-            },
-          })
+        if (shift === SHIFT_VALUE_MORNING) {
+          start_time = "09:00"
+          end_time = "18:00"
+        } else if (shift === SHIFT_VALUE_EVENING) {
+          start_time = "18:00"
+          end_time = "03:00"
+        } else if (shift === SHIFT_VALUE_DOUBLE) {
+          start_time = "09:00"
+          end_time = "03:00"
+        } else {
+          start_time = null
+          end_time = null
+          is_working = false
+        }
 
-          return result?.data?.createManagerWorkSchedule?.id || null
-        }),
-      )
+        const finalLocationId = shift === SHIFT_VALUE_OFF ? "0" : managerLocation?.id || "0"
+        const dayName = new Date(dateString).toLocaleDateString("en-US", { weekday: "long" })
 
-      const reference_id = createdSchedules.find((id) => id !== null) || null
+        return {
+          employee_id: selectedEmployee,
+          date: dateString,
+          start_time,
+          end_time,
+          shift_type: shift,
+          job_position: jobPosition || selectedEmployeeData?.job_title || "",
+          is_working,
+          location_id: finalLocationId,
+          day: dayName,
+          retard: null,
+        }
+      })
+
+      const result = await createManagerSchedule({
+        variables: {
+          employee_id: selectedEmployee,
+          schedules: schedules,
+        },
+      })
+
+      const currentDate = new Date()
+      const currentMonth = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
       await sendApprovalRequest({
         variables: {
-          type: "schedule_change",
-          reference_id,
+          type: "planning_approval",
+          reference_id: result?.data?.createManagerWorkSchedule?.[0]?.id || null,
           manager_id: user.id,
+          employee_id: selectedEmployee,
           data: JSON.stringify({
             schedule,
             employee_id: selectedEmployee,
             employee_name: selectedEmployeeData?.name,
             manager_username: user.username,
-            tableName: `${user.username.toLowerCase()}_manager_${selectedEmployee}`,
             location: managerLocation?.name,
+            schedules: schedules,
           }),
+          month: currentMonth,
         },
       })
 
