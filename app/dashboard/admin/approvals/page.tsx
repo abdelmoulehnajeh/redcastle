@@ -6,13 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useQuery, useMutation } from "@apollo/client"
+import { useQuery, useMutation, useLazyQuery } from "@apollo/client"
 import {
   GET_LEAVE_REQUESTS,
   APPROVE_LEAVE_REQUEST,
   GET_ADMIN_APPROVALS,
   APPROVE_SCHEDULE_CHANGE,
   REJECT_SCHEDULE_CHANGE,
+  GET_MANAGER_PLANNING_DATA,
+  GET_WORK_SCHEDULES_RANGE,
+  UPDATE_WORK_SCHEDULE,
+  DELETE_WORK_SCHEDULE, // Added DELETE_WORK_SCHEDULE mutation
+  DELETE_WORK_SCHEDULES_BY_EMPLOYEE, // Added DELETE_WORK_SCHEDULES_BY_EMPLOYEE mutation
 } from "@/lib/graphql-queries"
 import { toast } from "sonner"
 import {
@@ -27,7 +32,15 @@ import {
   Filter,
   RefreshCw,
   MessageSquare,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Edit,
 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 interface LeaveRequest {
   id: string
@@ -61,6 +74,34 @@ interface AdminApproval {
   created_at: string
   reviewed_at?: string
   data: string
+}
+
+interface ManagerPlanningData {
+  id: string
+  employee_id: string
+  employee: {
+    id: string
+    nom: string
+    prenom: string
+    profile: {
+      first_name: string
+      last_name: string
+    }
+  }
+  shift_type: string
+  date: string
+  start_time: string
+  end_time: string
+  job_position: string
+  location: {
+    id: string
+    name: string
+    address: string
+  }
+  status: string
+  traite: string
+  is_working: boolean
+  created_at: string
 }
 
 type Lang = "fr" | "ar"
@@ -286,7 +327,7 @@ const translations: Record<Lang, Dict> = {
     loadingLabel: "جاري...",
 
     noNotificationsTitle: "لا توجد طلبات مدير",
-    noNotificationsDesc: "تمت معالجة جميع ال��لبات",
+    noNotificationsDesc: "تمت معالجة جميع اللبات",
     noLeaveTitle: "لا توجد طلبات قيد الانتظار",
     noLeaveDesc: "تمت معالجة جميع الطلبات",
     dateUnknown: "تاريخ غير معروف",
@@ -312,6 +353,73 @@ function useLang(): Lang {
   return lang
 }
 
+function getMonthInfo(date: Date) {
+  const year = date.getFullYear()
+  const month = date.getMonth() // 0-11
+  const first = new Date(year, month, 1)
+  const last = new Date(year, month + 1, 0)
+  // We use Monday as first day of week (1=Mon,...,7=Sun)
+  const firstWeekday = (first.getDay() + 6) % 7 // 0..6 with 0=Mon
+  const daysInMonth = last.getDate()
+  const grid: (Date | null)[] = []
+  for (let i = 0; i < firstWeekday; i++) grid.push(null)
+  for (let d = 1; d <= daysInMonth; d++) grid.push(new Date(year, month, d))
+  return { year, month, first, last, grid, daysInMonth }
+}
+
+function ymd(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${dd}`
+}
+
+// Normalizes various date inputs into "YYYY-MM-DD"
+function normalizeDateKey(input: unknown): string {
+  if (input == null) return ""
+  if (typeof input === "string") {
+    // Already "YYYY-MM-DD"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input
+    // Maybe a numeric string (epoch ms or seconds)
+    const num = Number(input)
+    if (Number.isFinite(num)) {
+      const d =
+        String(input).length >= 12 // heuristic: ms vs s
+          ? new Date(num)
+          : new Date(num * 1000)
+      return ymd(d)
+    }
+    // Fallback: parseable date string
+    const parsed = Date.parse(input)
+    if (!Number.isNaN(parsed)) return ymd(new Date(parsed))
+    return input
+  }
+  if (typeof input === "number" && Number.isFinite(input)) {
+    // Assume epoch ms
+    const d = new Date(input)
+    return ymd(d)
+  }
+  try {
+    const d = new Date(String(input))
+    if (!Number.isNaN(d.getTime())) return ymd(d)
+  } catch {}
+  return ""
+}
+
+function getAbbrev(name: string | undefined | null, max = 3) {
+  if (!name || typeof name !== "string" || !name.trim()) return ""
+  const parts = name.trim().split(/\s+/)
+  const letters = parts.map((p) => p[0]?.toUpperCase()).join("")
+  const abbr = letters || name.slice(0, max).toUpperCase()
+  return abbr.slice(0, max)
+}
+
+type DayAssignment = {
+  shift: "Matin" | "Soirée" | "Doublage" | "Repos"
+  location_id?: string
+  job_position?: string
+}
+
 export default function AdminApprovalsPage() {
   const lang = useLang()
   const t = translations[lang]
@@ -319,8 +427,27 @@ export default function AdminApprovalsPage() {
   const [comments, setComments] = useState<{ [key: string]: string }>({})
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending")
   const [refreshing, setRefreshing] = useState(false)
+  const [planningManagerOpen, setPlanningManagerOpen] = useState(false)
+  const [planningData, setPlanningData] = useState<any[]>([])
+  const [loadingPlanning, setLoadingPlanning] = useState(false)
 
-  // Fetch admin approvals (requests from managers)
+  const [notificationPlanners, setNotificationPlanners] = useState<{ [key: string]: boolean }>({})
+  const [notificationPlanningData, setNotificationPlanningData] = useState<{ [key: string]: any[] }>({})
+
+  const [plannerMonth, setPlannerMonth] = useState<Date>(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  })
+  const [monthEdits, setMonthEdits] = useState<Record<string, DayAssignment>>({})
+  const [editingDay, setEditingDay] = useState<string | null>(null)
+  const [grid, setGrid] = useState<(Date | null)[]>([])
+  const [monthLabel, setMonthLabel] = useState("")
+
+  const [modificationPlannerOpen, setModificationPlannerOpen] = useState(false)
+  const [currentNotificationId, setCurrentNotificationId] = useState<string | null>(null)
+  const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null)
+
   const {
     data: adminApprovalsData,
     loading: loadingApprovals,
@@ -332,7 +459,6 @@ export default function AdminApprovalsPage() {
     errorPolicy: "all",
   })
 
-  // Fetch leave requests (from employees)
   const {
     data: leaveRequestsData,
     loading: loadingRequests,
@@ -344,13 +470,38 @@ export default function AdminApprovalsPage() {
     errorPolicy: "all",
   })
 
-  // Mutations
+  const {
+    data: managerPlanningData,
+    loading: loadingManagerPlanning,
+    refetch: refetchManagerPlanning,
+  } = useQuery(GET_MANAGER_PLANNING_DATA, {
+    skip: !planningManagerOpen,
+    fetchPolicy: "cache-and-network",
+    errorPolicy: "all",
+  })
+
+  const [getWorkSchedulesRange, { loading: loadingWorkSchedulesRange }] = useLazyQuery(GET_WORK_SCHEDULES_RANGE)
+
   const [approveLeaveRequest, { loading: approvingRequest }] = useMutation(APPROVE_LEAVE_REQUEST)
   const [approveScheduleChange, { loading: approvingSchedule }] = useMutation(APPROVE_SCHEDULE_CHANGE)
   const [rejectScheduleChange, { loading: rejectingSchedule }] = useMutation(REJECT_SCHEDULE_CHANGE)
+  const [updateWorkSchedule] = useMutation(UPDATE_WORK_SCHEDULE) // Added UPDATE_WORK_SCHEDULE mutation
+  const [deleteWorkSchedule] = useMutation(DELETE_WORK_SCHEDULE) // Added DELETE_WORK_SCHEDULE mutation
+  const [deleteWorkSchedulesByEmployee] = useMutation(DELETE_WORK_SCHEDULES_BY_EMPLOYEE) // Added DELETE_WORK_SCHEDULES_BY_EMPLOYEE mutation
 
   const adminApprovals: AdminApproval[] = adminApprovalsData?.adminApprovals || []
   const leaveRequests: LeaveRequest[] = leaveRequestsData?.leaveRequests || []
+
+  useEffect(() => {
+    const monthInfo = getMonthInfo(plannerMonth)
+    setGrid(monthInfo.grid)
+    setMonthLabel(
+      new Intl.DateTimeFormat(lang === "ar" ? "ar-TN" : "fr-FR", {
+        month: "long",
+        year: "numeric",
+      }).format(plannerMonth),
+    )
+  }, [plannerMonth, lang])
 
   const formatDate = (dateInput: string | number | null | undefined) => {
     let dateObj: Date | null = null
@@ -418,19 +569,293 @@ export default function AdminApprovalsPage() {
 
   const handleApprovalDecision = async (approvalId: string, status: "approved" | "rejected") => {
     try {
+      const approval = adminApprovals.find((a) => a.id === approvalId)
+      if (!approval) return
+
+      let parsedData
+      try {
+        parsedData = JSON.parse(approval.data)
+      } catch (e) {
+        console.error("Error parsing approval data:", e)
+        parsedData = {}
+      }
+
       if (status === "approved") {
+        // This part is now handled by the frontend logic below, not a direct SQL query.
+        // The original logic for updating work schedules to 'confirmed' is preserved.
+        if (parsedData.employee_id) {
+          const { data: scheduleData } = await getWorkSchedulesRange({
+            variables: { employee_id: parsedData.employee_id },
+            fetchPolicy: "network-only",
+          })
+
+          const managerSchedules = scheduleData?.workSchedulesRange?.filter((s: any) => s.status === "manager") || []
+
+          for (const schedule of managerSchedules) {
+            await updateWorkSchedule({
+              variables: {
+                id: schedule.id,
+                status: "confirmed",
+              },
+            })
+          }
+        }
+
+        // This logic is now handled by the approveScheduleChange mutation itself,
+        // assuming the mutation updates the admin_approvals table.
+        // If not, a separate mutation or direct update would be needed.
+
         await approveScheduleChange({ variables: { approval_id: approvalId } })
         toast.success(t.scheduleApproved, { description: t.decisionSaved })
       } else {
+        // Also DELETE from source table WHERE status = manager
+        if (parsedData.employee_id) {
+          await deleteWorkSchedulesByEmployee({
+            variables: {
+              employee_id: parsedData.employee_id,
+            },
+          })
+        }
+
         await rejectScheduleChange({ variables: { approval_id: approvalId, comment: comments[approvalId] || "" } })
         toast.success(t.scheduleRejected, { description: t.decisionSaved })
       }
+
       setComments((prev) => ({ ...prev, [approvalId]: "" }))
       await refetchApprovals()
     } catch (error) {
       toast.error(t.processError, { description: t.processErrorDesc })
       console.error("Error processing manager approval:", error)
     }
+  }
+
+  const handleOpenPlanningManager = async () => {
+    //console.log("[v0] Opening planning manager modal")
+    setLoadingPlanning(true)
+    setPlanningManagerOpen(true)
+    try {
+      //console.log("[v0] Refetching manager planning data...")
+      const result = await refetchManagerPlanning()
+      //console.log("[v0] Manager planning data result:", result)
+      //console.log("[v0] Manager planning data:", managerPlanningData)
+      setPlanningData(managerPlanningData?.workSchedulesManager || [])
+    } catch (error) {
+      //console.log("[v0] Error loading planning data:", error)
+      toast.error("Erreur lors du chargement du planning", { description: "Impossible de charger les données" })
+      console.error("Error loading planning data:", error)
+    } finally {
+      setLoadingPlanning(false)
+    }
+  }
+
+  const openNotificationPlanner = async (notificationId: string, notificationData: string) => {
+    //console.log("[v0] Opening notification planner for:", notificationId)
+    setLoadingPlanning(true)
+
+    try {
+      // Parse notification data to extract employee_id and date range
+      let parsedData
+      try {
+        parsedData = JSON.parse(notificationData)
+      } catch (e) {
+        //console.log("[v0] Could not parse notification data, using raw data")
+        parsedData = { employee_id: null }
+      }
+
+      if (parsedData.employee_id) {
+        //console.log("[v0] Fetching work schedules for employee:", parsedData.employee_id)
+
+        const { first, last } = getMonthInfo(plannerMonth)
+        const start = first.toISOString().slice(0, 10)
+        const end = last.toISOString().slice(0, 10)
+
+        const result = await getWorkSchedulesRange({
+          variables: {
+            employee_id: parsedData.employee_id,
+            start,
+            end,
+          },
+          fetchPolicy: "network-only",
+        })
+
+        //console.log("[v0] Work schedules result:", result)
+
+        const existing = (result.data?.workSchedulesRange ?? []) as any[]
+        const prefilled: Record<string, DayAssignment> = {}
+        existing.forEach((s: any) => {
+          if (s?.date) {
+            const key = normalizeDateKey(s.date)
+            if (!key) return
+            prefilled[key] = {
+              shift: (s.shift_type as DayAssignment["shift"]) ?? "Repos",
+              location_id: s.shift_type === "Repos" ? "0" : (s.location_id?.toString() ?? undefined),
+              job_position: s.job_position ?? undefined,
+            }
+          }
+        })
+        setMonthEdits(prefilled)
+
+        setNotificationPlanningData((prev) => ({
+          ...prev,
+          [notificationId]: result.data?.workSchedulesRange || [],
+        }))
+      }
+
+      setNotificationPlanners((prev) => ({
+        ...prev,
+        [notificationId]: true,
+      }))
+    } catch (error) {
+      //console.log("[v0] Error loading notification planning data:", error)
+      toast.error("Erreur lors du chargement du planning", { description: "Impossible de charger les données" })
+    } finally {
+      setLoadingPlanning(false)
+    }
+  }
+
+  const closeNotificationPlanner = (notificationId: string) => {
+    setNotificationPlanners((prev) => ({
+      ...prev,
+      [notificationId]: false,
+    }))
+    setMonthEdits({}) // Clear edits when closing
+  }
+
+  const openModificationPlanner = async (notificationId: string, notificationData: string) => {
+    //console.log("[v0] Opening modification planner for:", notificationId)
+    setCurrentNotificationId(notificationId)
+
+    try {
+      let parsedData
+      try {
+        parsedData = JSON.parse(notificationData)
+      } catch (e) {
+        //console.log("[v0] Could not parse notification data, using raw data")
+        parsedData = { employee_id: null }
+      }
+
+      if (parsedData.employee_id) {
+        setCurrentEmployeeId(parsedData.employee_id)
+        //console.log("[v0] Fetching work schedules for employee:", parsedData.employee_id)
+
+        const { first, last } = getMonthInfo(plannerMonth)
+        const start = first.toISOString().slice(0, 10)
+        const end = last.toISOString().slice(0, 10)
+
+        const result = await getWorkSchedulesRange({
+          variables: {
+            employee_id: parsedData.employee_id,
+            start,
+            end,
+          },
+          fetchPolicy: "network-only",
+        })
+
+        //console.log("[v0] Work schedules result:", result)
+
+        const existing = (result.data?.workSchedulesRange ?? []) as any[]
+        const prefilled: Record<string, DayAssignment> = {}
+        existing.forEach((s: any) => {
+          if (s?.date) {
+            const key = normalizeDateKey(s.date)
+            if (!key) return
+            prefilled[key] = {
+              shift: (s.shift_type as DayAssignment["shift"]) ?? "Repos",
+              location_id: s.shift_type === "Repos" ? "0" : (s.location_id?.toString() ?? undefined),
+              job_position: s.job_position ?? undefined,
+            }
+          }
+        })
+        setMonthEdits(prefilled)
+      }
+
+      setModificationPlannerOpen(true)
+    } catch (error) {
+      //console.log("[v0] Error loading modification planning data:", error)
+      toast.error("Erreur lors du chargement du planning", { description: "Impossible de charger les données" })
+    } finally {
+      setLoadingPlanning(false)
+    }
+  }
+
+  const saveModificationPlanning = async (notificationId?: string) => {
+    if (!currentEmployeeId || !currentNotificationId) {
+      toast.error("Erreur", { description: "Données manquantes pour la modification" })
+      return
+    }
+
+    try {
+      const entries = Object.entries(monthEdits)
+      if (entries.length === 0) {
+        setModificationPlannerOpen(false)
+        return
+      }
+
+      // Update work_schedules: SET status='admin' WHERE employee_id and current schedules
+      const { data: scheduleData } = await getWorkSchedulesRange({
+        variables: { employee_id: currentEmployeeId },
+        fetchPolicy: "network-only",
+      })
+
+      const existingSchedules = scheduleData?.workSchedulesRange || []
+
+      // Update existing schedules to status='admin'
+      for (const schedule of existingSchedules) {
+        if (schedule.status === "manager") {
+          await updateWorkSchedule({
+            variables: {
+              id: schedule.id,
+              status: "admin",
+            },
+          })
+        }
+      }
+
+      // Update the approval status to 'admin' as well
+      // This assumes the approval itself is a "work schedule" or has a similar ID structure.
+      // If not, a separate mutation or direct update would be needed.
+      await updateWorkSchedule({
+        variables: {
+          id: currentNotificationId, // Assuming currentNotificationId is the ID of the approval record
+          status: "admin",
+        },
+      })
+
+      toast.success("Planning modifié", {
+        description: "Les modifications ont été appliquées avec le statut admin",
+      })
+
+      setModificationPlannerOpen(false)
+      setCurrentNotificationId(null)
+      setCurrentEmployeeId(null)
+      setMonthEdits({})
+      await refetchApprovals()
+    } catch (error) {
+      console.error("Error saving modification planning:", error)
+      toast.error("Erreur", { description: "Impossible de sauvegarder les modifications" })
+    }
+  }
+
+  const changeMonth = (delta: number) => {
+    const d = new Date(plannerMonth)
+    d.setMonth(d.getMonth() + delta)
+    setPlannerMonth(d)
+    setEditingDay(null)
+  }
+
+  const applyForDay = (dateStr: string, payload: DayAssignment | null) => {
+    setMonthEdits((prev) => {
+      const next = { ...prev }
+      if (!payload) {
+        delete next[dateStr]
+      } else if (payload.shift === "Repos") {
+        next[dateStr] = { ...payload, location_id: "0" }
+      } else {
+        next[dateStr] = payload
+      }
+      return next
+    })
+    setEditingDay(null)
   }
 
   const totalPending =
@@ -492,16 +917,18 @@ export default function AdminApprovalsPage() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={handleRefresh}
-              variant="secondary"
-              size="sm"
-              className="glass-card bg-gradient-to-br from-slate-800/80 to-indigo-900/80 border border-white/10 text-white hover:bg-white/30 w-full sm:w-auto"
-              disabled={refreshing}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-              <span dir="auto">{t.refresh}</span>
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleRefresh}
+                variant="secondary"
+                size="sm"
+                className="glass-card bg-gradient-to-br from-slate-800/80 to-indigo-900/80 border border-white/10 text-white hover:bg-white/30"
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                <span dir="auto">{t.refresh}</span>
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -641,6 +1068,9 @@ export default function AdminApprovalsPage() {
                     onApprove={() => handleApprovalDecision(notif.id, "approved")}
                     onReject={() => handleApprovalDecision(notif.id, "rejected")}
                     loadingAction={approvingSchedule || rejectingSchedule}
+                    onOpenPlanner={openNotificationPlanner}
+                    loadingPlanning={loadingPlanning}
+                    onOpenModificationPlanner={openModificationPlanner} // Added modification planner prop
                   />
                 ))}
               </div>
@@ -705,6 +1135,524 @@ export default function AdminApprovalsPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Planning Manager Modal */}
+      <Dialog open={planningManagerOpen} onOpenChange={setPlanningManagerOpen}>
+        <DialogContent className="w-[98vw] max-w-7xl mx-auto max-h-[95vh] overflow-y-auto glass-card bg-gradient-to-br from-slate-900/95 via-purple-900/90 to-slate-900/95 backdrop-blur-xl border border-white/10 p-0">
+          <DialogHeader className="sticky top-0 z-10 bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-900/80 backdrop-blur-md border-b border-white/10 px-6 py-4">
+            <DialogTitle className="text-2xl font-bold text-white flex items-center space-x-3">
+              <Calendar className="w-8 h-8 text-emerald-400" />
+              <span>Planning Manager</span>
+            </DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Plannings créés par les managers (status='manager' et traite='manager')
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 py-6">
+            {loadingManagerPlanning ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400"></div>
+                <span className="ml-4 text-lg text-slate-300">Chargement du planning...</span>
+              </div>
+            ) : managerPlanningData?.workSchedulesManager?.length > 0 ? (
+              <div className="space-y-6">
+                <Card className="glass-card backdrop-blur-futuristic border border-white/10 shadow-2xl bg-gradient-to-br from-slate-900/70 via-purple-900/60 to-slate-900/70">
+                  <CardHeader>
+                    <CardTitle className="text-white">Planning des Managers</CardTitle>
+                    <CardDescription className="text-slate-300">
+                      Vue d'ensemble des plannings créés par les managers
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-white">
+                        <thead>
+                          <tr className="border-b border-white/10">
+                            <th className="text-left p-3 font-semibold">Employé</th>
+                            <th className="text-center p-3 font-semibold">Date</th>
+                            <th className="text-center p-3 font-semibold">Shift</th>
+                            <th className="text-center p-3 font-semibold">Horaires</th>
+                            <th className="text-center p-3 font-semibold">Poste</th>
+                            <th className="text-center p-3 font-semibold">Lieu</th>
+                            <th className="text-center p-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerPlanningData.workSchedulesManager
+                            .sort(
+                              (a: ManagerPlanningData, b: ManagerPlanningData) =>
+                                new Date(a.date).getTime() - new Date(b.date).getTime(),
+                            )
+                            .map((schedule: ManagerPlanningData) => {
+                              const scheduleDate = new Date(schedule.date)
+                              const isToday = scheduleDate.toDateString() === new Date().toDateString()
+                              const dayName = scheduleDate.toLocaleDateString("fr-FR", { weekday: "long" })
+                              const dateStr = scheduleDate.toLocaleDateString("fr-FR", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+
+                              return (
+                                <tr
+                                  key={schedule.id}
+                                  className={`border-b border-white/5 hover:bg-white/5 transition-colors ${
+                                    isToday ? "bg-blue-600/10" : ""
+                                  }`}
+                                >
+                                  <td className="p-3">
+                                    <div className="flex items-center space-x-3">
+                                      <Avatar className="w-8 h-8">
+                                        <AvatarFallback className="text-xs bg-gradient-to-br from-blue-700/60 to-purple-700/60 text-white">
+                                          {(schedule.employee.profile.first_name || schedule.employee.prenom || "")[0]}
+                                          {(schedule.employee.profile.last_name || schedule.employee.nom || "")[0]}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-medium text-sm truncate text-white">
+                                          {schedule.employee.profile.first_name || schedule.employee.prenom}{" "}
+                                          {schedule.employee.profile.last_name || schedule.employee.nom}
+                                        </p>
+                                        <p className="text-xs text-slate-400 truncate">ID: {schedule.employee_id}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    <div className="flex flex-col items-center">
+                                      <span className="text-sm font-medium text-white">{dateStr}</span>
+                                      <span className="text-xs text-slate-400 capitalize">{dayName}</span>
+                                      {isToday && (
+                                        <span className="text-xs text-blue-400 font-medium">Aujourd'hui</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    <Badge
+                                      className={`text-xs font-medium border-0 ${
+                                        schedule.shift_type === "Matin"
+                                          ? "bg-blue-700/30 text-blue-200 border border-blue-500/30"
+                                          : schedule.shift_type === "Soirée"
+                                            ? "bg-purple-700/30 text-purple-200 border border-purple-500/30"
+                                            : schedule.shift_type === "Doublage"
+                                              ? "bg-orange-700/30 text-orange-200 border border-orange-500/30"
+                                              : schedule.shift_type === "Repos"
+                                                ? "bg-gray-700/30 text-gray-200 border border-gray-500/30"
+                                                : "bg-slate-700/30 text-slate-200 border border-slate-500/30"
+                                      }`}
+                                    >
+                                      {schedule.shift_type}
+                                    </Badge>
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    {schedule.start_time && schedule.end_time ? (
+                                      <div className="flex items-center justify-center space-x-1">
+                                        <Clock className="w-3 h-3 text-emerald-400" />
+                                        <span className="text-sm text-emerald-200">
+                                          {schedule.start_time} - {schedule.end_time}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 text-sm">-</span>
+                                    )}
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    {schedule.job_position ? (
+                                      <span className="text-sm text-yellow-200">{schedule.job_position}</span>
+                                    ) : (
+                                      <span className="text-slate-400 text-sm">-</span>
+                                    )}
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    {schedule.location ? (
+                                      <div className="flex items-center justify-center space-x-1">
+                                        <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                                        <span className="text-sm text-emerald-200">{schedule.location.name}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 text-sm">-</span>
+                                    )}
+                                  </td>
+
+                                  <td className="text-center p-3">
+                                    <div className="flex flex-col items-center space-y-1">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs border-emerald-500/30 text-emerald-200"
+                                      >
+                                        {schedule.status}
+                                      </Badge>
+                                      <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-200">
+                                        {schedule.traite}
+                                      </Badge>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-1 md:grid-grid-cols-3 gap-4">
+                  <div className="glass-card bg-gradient-to-br from-blue-800/30 to-blue-900/30 border border-blue-500/20 rounded-xl p-4">
+                    <div className="flex items-center space-x-3">
+                      <Calendar className="w-8 h-8 text-blue-400" />
+                      <div>
+                        <div className="text-2xl font-bold text-white">
+                          {managerPlanningData.workSchedulesManager.length}
+                        </div>
+                        <div className="text-sm text-blue-200">Total Plannings</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass-card bg-gradient-to-br from-emerald-800/30 to-emerald-900/30 border border-emerald-500/20 rounded-xl p-4">
+                    <div className="flex items-center space-x-3">
+                      <Users className="w-8 h-8 text-emerald-400" />
+                      <div>
+                        <div className="text-2xl font-bold text-white">
+                          {
+                            new Set(
+                              managerPlanningData.workSchedulesManager.map((s: ManagerPlanningData) => s.employee_id),
+                            ).size
+                          }
+                        </div>
+                        <div className="text-sm text-emerald-200">Employés Concernés</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass-card bg-gradient-to-br from-purple-800/30 to-purple-900/30 border border-purple-500/20 rounded-xl p-4">
+                    <div className="flex items-center space-x-3">
+                      <Clock className="w-8 h-8 text-purple-400" />
+                      <div>
+                        <div className="text-2xl font-bold text-white">
+                          {
+                            managerPlanningData.workSchedulesManager.filter(
+                              (s: ManagerPlanningData) => s.shift_type !== "Repos",
+                            ).length
+                          }
+                        </div>
+                        <div className="text-sm text-purple-200">Shifts Actifs</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Calendar className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+                <p className="text-slate-400 text-lg">Aucun planning manager trouvé</p>
+                <p className="text-slate-500 text-sm">Aucune donnée avec status='manager' et traite='manager'</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Single Planning Modal with Admin Actions Inside */}
+      {adminApprovals.map((notif) => (
+        <Dialog
+          key={notif.id}
+          open={notificationPlanners[notif.id] || false}
+          onOpenChange={(open) => !open && closeNotificationPlanner(notif.id)}
+        >
+          <DialogContent className="w-[98vw] max-w-6xl mx-auto max-h-[95vh] overflow-y-auto glass-card bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-900/95 border border-white/10 text-white p-0">
+            <DialogHeader className="sticky top-0 z-10 bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-900/80 backdrop-blur-md border-b border-white/10 px-4 py-4">
+              <DialogTitle className="text-lg sm:text-xl">Planning du mois — Demande #{notif.reference_id}</DialogTitle>
+              <DialogDescription className="text-sm sm:text-base">
+                Plannings pour le mois de {monthLabel}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-2 sm:px-4 py-4 space-y-4">
+              {notif.status === "pending" && (
+                <div className="space-y-3 p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-800/70 to-indigo-900/70 rounded-lg border border-white/10">
+                  <h4 className="text-sm font-medium text-white">Commentaire administrateur</h4>
+                  <Textarea
+                    placeholder={t.adminCommentPlaceholder}
+                    value={comments[notif.id] || ""}
+                    onChange={(e) => setComments((prev) => ({ ...prev, [notif.id]: e.target.value }))}
+                    rows={2}
+                    className="glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 border border-white/10 text-white text-sm"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                    <span className="text-slate-300">Shift simple</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex flex-col gap-0.5">
+                      <span className="block w-2.5 h-2 rounded-full bg-cyan-400" />
+                      <span className="block w-2.5 h-2 rounded-full bg-cyan-400" />
+                    </span>
+                    <span className="text-slate-300">Doublage</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-500" />
+                    <span className="text-slate-300">Repos</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => changeMonth(-1)}
+                    aria-label="Mois précédent"
+                    className="h-8 w-8 sm:h-10 sm:w-10"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <div className="px-2 sm:px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs sm:text-sm whitespace-nowrap">
+                    {monthLabel}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => changeMonth(1)}
+                    aria-label="Mois suivant"
+                    className="h-8 w-8 sm:h-10 sm:w-10"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="w-full">
+                <div className="grid grid-cols-7 gap-1 text-xs text-slate-400 mb-2">
+                  <div className="text-center p-1">Lun</div>
+                  <div className="text-center p-1">Mar</div>
+                  <div className="text-center p-1">Mer</div>
+                  <div className="text-center p-1">Jeu</div>
+                  <div className="text-center p-1">Ven</div>
+                  <div className="text-center p-1">Sam</div>
+                  <div className="text-center p-1">Dim</div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {grid.map((d, idx) => {
+                    if (!d) return <div key={`empty-${idx}`} />
+                    const ds = ymd(d)
+                    const assign = monthEdits[ds]
+                    const shift = assign?.shift
+                    const isDouble = shift === "Doublage"
+                    const isSimple = shift === "Matin" || shift === "Soirée"
+                    const isRepos = shift === "Repos"
+
+                    const isToday = ds === ymd(new Date())
+
+                    return (
+                      <Popover key={ds} open={editingDay === ds} onOpenChange={(o) => setEditingDay(o ? ds : null)}>
+                        <PopoverTrigger asChild>
+                          <button
+                            className={`relative rounded-lg px-1 pt-2 pb-4 text-left transition-all duration-200 h-12 sm:h-16 md:h-20 w-full ${
+                              isToday
+                                ? "bg-blue-600/20 hover:bg-blue-600/30 border-2 border-blue-500/50"
+                                : "bg-white/5 hover:bg-white/10 border border-white/10"
+                            }`}
+                            onClick={() => setEditingDay(ds)}
+                          >
+                            <span
+                              className={`text-xs font-medium block ${isToday ? "text-blue-200" : "text-slate-200"}`}
+                            >
+                              {d.getDate()}
+                            </span>
+
+                            {isToday && (
+                              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                            )}
+
+                            <div className="absolute left-1 bottom-1 flex flex-col items-start gap-0.5">
+                              {isDouble ? (
+                                <>
+                                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                                </>
+                              ) : isSimple ? (
+                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                              ) : isRepos ? (
+                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-slate-500 shadow-[0_0_8px_rgba(100,116,139,0.6)]" />
+                              ) : null}
+                            </div>
+
+                            {assign?.location_id && assign?.location_id !== "0" && (
+                              <span
+                                className="absolute right-1 bottom-1 text-[8px] sm:text-[9px] px-1 py-0.5 rounded-md bg-slate-800/70 text-slate-100 border border-white/10"
+                                title={`Restaurant ${assign.location_id}`}
+                              >
+                                {getAbbrev(`Restaurant ${assign.location_id}`, 2)}
+                              </span>
+                            )}
+
+                            {(assign?.location_id === "0" || assign?.shift === "Repos") && (
+                              <span
+                                className="absolute right-1 bottom-1 text-[8px] sm:text-[10px] font-bold text-white bg-gray-600/80 px-1 rounded"
+                                title="Repos"
+                              >
+                                REP
+                              </span>
+                            )}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 sm:w-80 p-0 bg-gradient-to-br from-slate-900/95 to-slate-900/95 border border-white/10 text-white">
+                          <div className="p-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm text-slate-300">
+                                {new Intl.DateTimeFormat("fr-FR", {
+                                  weekday: "long",
+                                  day: "2-digit",
+                                  month: "long",
+                                }).format(d)}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setEditingDay(null)}
+                                className="h-6 w-6"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="text-xs text-slate-400 uppercase tracking-wide">Type de shift</div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { value: "Matin", label: "Matin" },
+                                  { value: "Soirée", label: "Soirée" },
+                                  { value: "Doublage", label: "Doublage" },
+                                  { value: "Repos", label: "Repos" },
+                                ].map((shift) => (
+                                  <Button
+                                    key={shift.value}
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      applyForDay(ds, {
+                                        shift: shift.value as DayAssignment["shift"],
+                                        location_id: shift.value === "Repos" ? "0" : undefined,
+                                        job_position: undefined,
+                                      })
+                                    }
+                                    className={`text-xs h-8 ${
+                                      assign?.shift === shift.value
+                                        ? "bg-blue-600/30 border-blue-500/50 text-blue-200"
+                                        : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                                    }`}
+                                  >
+                                    {shift.label}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => applyForDay(ds, null)}
+                                className="flex-1 h-8 text-xs bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                              >
+                                Effacer
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => setEditingDay(null)}
+                                className="flex-1 h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                Appliquer
+                              </Button>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-white/10">
+                <Button
+                  variant="outline"
+                  onClick={() => closeNotificationPlanner(notif.id)}
+                  className="text-slate-300 border-white/20 hover:bg-white/10 bg-transparent order-3 sm:order-1"
+                >
+                  Fermer
+                </Button>
+
+                {notif.status === "pending" && (
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
+                    <Button
+                      onClick={() => {
+                        handleApprovalDecision(notif.id, "approved")
+                        closeNotificationPlanner(notif.id)
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white shadow-md glass-card flex-1 sm:flex-none"
+                      disabled={approvingSchedule || rejectingSchedule}
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      <span dir="auto">Approuver</span>
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        handleApprovalDecision(notif.id, "rejected")
+                        closeNotificationPlanner(notif.id)
+                      }}
+                      variant="destructive"
+                      className="shadow-md glass-card flex-1 sm:flex-none"
+                      disabled={approvingSchedule || rejectingSchedule}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      <span dir="auto">Rejeter</span>
+                    </Button>
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => saveModificationPlanning(notif.id)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white order-2 sm:order-3"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Appliquer les modifications (Admin)</span>
+                  <span className="sm:hidden">Modifications Admin</span>
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ))}
+
+      <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl">
+        <div className="flex items-center justify-between mb-2">
+          <Button
+            onClick={() => handleOpenPlanningManager()}
+            variant="secondary"
+            size="sm"
+            className="glass-card bg-gradient-to-br from-emerald-800/80 to-green-900/80 border border-white/10 text-white hover:bg-white/30"
+            disabled={loadingPlanning}
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            <span dir="auto">Voir le Planning Manager</span>
+          </Button>
+        </div>
+
+        <div className="text-xs text-slate-300 p-2 bg-slate-800/50 rounded border border-white/10">
+          Cliquez sur "Voir le Planning Manager" pour consulter et modifier le planning proposé
+        </div>
       </div>
     </div>
   )
@@ -778,6 +1726,9 @@ function ApprovalCard({
   onApprove,
   onReject,
   loadingAction,
+  onOpenPlanner,
+  loadingPlanning,
+  onOpenModificationPlanner, // Added onOpenModificationPlanner prop
 }: {
   notification: AdminApproval
   comment: string
@@ -787,6 +1738,9 @@ function ApprovalCard({
   onApprove: () => void
   onReject: () => void
   loadingAction: boolean
+  onOpenPlanner: (notificationId: string, notificationData: string) => void
+  loadingPlanning: boolean
+  onOpenModificationPlanner: (notificationId: string, notificationData: string) => void // Added prop type
 }) {
   const statusClass =
     notification.status === "pending"
@@ -829,50 +1783,22 @@ function ApprovalCard({
       </div>
 
       <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl">
-        <p className="text-xs text-muted-foreground mb-2" dir="auto">
-          {t.notifDataTitle}
-        </p>
-        <pre
-          className="text-xs overflow-x-auto max-h-24 sm:max-h-32 whitespace-pre-wrap break-words text-slate-200"
-          dir="auto"
-        >
-          {notification.data}
-        </pre>
-      </div>
+        <div className="flex items-center justify-center mb-2">
+          <Button
+            onClick={() => onOpenPlanner(notification.id, notification.data)}
+            variant="secondary"
+            size="sm"
+            className="glass-card bg-gradient-to-br from-emerald-800/80 to-green-900/80 border border-white/10 text-white hover:bg-white/30 w-full sm:w-auto"
+            disabled={loadingPlanning}
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            <span dir="auto">Voir le Planning Manager</span>
+          </Button>
+        </div>
 
-      <div className="space-y-3">
-        {notification.status === "pending" && (
-          <>
-            <Textarea
-              placeholder={t.adminCommentPlaceholder}
-              value={comment}
-              onChange={(e) => onCommentChange(e.target.value)}
-              rows={2}
-              className="glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 border border-white/10 text-white text-sm"
-            />
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <Button
-                className="bg-green-600 hover:bg-green-700 text-white shadow-md flex-1 sm:flex-none glass-card"
-                size="sm"
-                onClick={onApprove}
-                disabled={loadingAction}
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                <span dir="auto">{t.notifAccept}</span>
-              </Button>
-              <Button
-                variant="destructive"
-                className="shadow-md flex-1 sm:flex-none glass-card"
-                size="sm"
-                onClick={onReject}
-                disabled={loadingAction}
-              >
-                <XCircle className="w-4 h-4 mr-2" />
-                <span dir="auto">{t.notifReject}</span>
-              </Button>
-            </div>
-          </>
-        )}
+        <div className="text-xs text-slate-300 p-2 bg-slate-800/50 rounded border border-white/10 text-center">
+          Cliquez pour consulter le planning et prendre une décision
+        </div>
       </div>
     </div>
   )

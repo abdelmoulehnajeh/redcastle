@@ -325,7 +325,7 @@ export default function EmployeeDetailsPage() {
     }
 
     // Debug: log the date value before sending
-    console.log("[disciplinary] Selected date for", type, ":", form.date)
+    //console.log("[disciplinary] Selected date for", type, ":", form.date)
 
     const variables = {
       employee_id: employeeId,
@@ -335,7 +335,7 @@ export default function EmployeeDetailsPage() {
       dat: formatDateForDat(form.date),
     }
 
-    console.log("[disciplinary] Mutation variables for", type, ":", variables)
+    //console.log("[disciplinary] Mutation variables for", type, ":", variables)
 
     try {
       switch (type) {
@@ -514,14 +514,14 @@ export default function EmployeeDetailsPage() {
       }
 
       if (isNaN(date.getTime())) {
-        console.log("[v0] Invalid date value:", dateString)
+        //console.log("[v0] Invalid date value:", dateString)
         return t("invalid_date")
       }
 
-      console.log("[v0] Formatting date:", dateString, "->", date)
+      //console.log("[v0] Formatting date:", dateString, "->", date)
       return format(date, "PPPP", { locale: lang === "ar" ? arLocale : fr })
     } catch (error) {
-      console.log("[v0] Date formatting error:", error, "for value:", dateString)
+      //console.log("[v0] Date formatting error:", error, "for value:", dateString)
       return t("invalid_date")
     }
   }
@@ -546,15 +546,15 @@ export default function EmployeeDetailsPage() {
   }, [schedules])
 
   const getLocationName = (locationId: string | number) => {
-    console.log("[v0] Location ID received:", locationId, "Type:", typeof locationId)
+    //console.log("[v0] Location ID received:", locationId, "Type:", typeof locationId)
 
     if (!locationId) {
-      console.log("[v0] Location ID is null/undefined")
+      //console.log("[v0] Location ID is null/undefined")
       return "Non assigné"
     }
 
     const location = locationOptions.find((loc) => loc.id === String(locationId))
-    console.log("[v0] Found location:", location)
+    //console.log("[v0] Found location:", location)
 
     return location ? location.name : "Non assigné"
   }
@@ -815,7 +815,7 @@ export default function EmployeeDetailsPage() {
                     <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
                     <span className="text-sm sm:text-base font-semibold text-foreground">
                       {(() => {
-                        console.log("[v0] Employee created_at value:", employee.created_at)
+                        //console.log("[v0] Employee created_at value:", employee.created_at)
                         return formatDate(employee.created_at)
                       })()}
                     </span>
@@ -890,8 +890,8 @@ export default function EmployeeDetailsPage() {
                     <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
                     <span className="text-sm sm:text-base font-semibold text-foreground" dir="auto">
                       {(() => {
-                        console.log("[v0] Employee location object:", employee.location)
-                        console.log("[v0] Employee location ID:", employee.location?.id)
+                        //console.log("[v0] Employee location object:", employee.location)
+                        //console.log("[v0] Employee location ID:", employee.location?.id)
                         return employee.location?.name || getLocationName(employee.location?.id) || "Non assigné"
                       })()}
                     </span>

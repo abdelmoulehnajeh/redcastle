@@ -42,9 +42,9 @@ export function NotificationAudioController({
           audioRef.current.pause()
           audioRef.current.currentTime = 0
           audioUnlockedRef.current = true
-          console.log("[v0] Audio unlocked after user gesture")
+          //console.log("[v0] Audio unlocked after user gesture")
         } catch (e) {
-          console.log("[v0] Failed to unlock audio:", e)
+          //console.log("[v0] Failed to unlock audio:", e)
         }
       }
     }
@@ -69,24 +69,24 @@ export function NotificationAudioController({
   const tryPlay = useCallback(async () => {
     const audio = audioRef.current
     if (!audio || !alertEnabled) {
-      console.log("[v0] Cannot play audio - audio:", !!audio, "alertEnabled:", alertEnabled)
+      //console.log("[v0] Cannot play audio - audio:", !!audio, "alertEnabled:", alertEnabled)
       return
     }
 
     try {
       audio.currentTime = 0
-      console.log(
-        "[v0] Attempting to play audio - readyState:",
-        audio.readyState,
-        "unlocked:",
-        audioUnlockedRef.current,
-      )
+      // console.log(
+      //   "[v0] Attempting to play audio - readyState:",
+      //   audio.readyState,
+      //   "unlocked:",
+      //   audioUnlockedRef.current,
+      // )
 
       await audio.play()
       awaitingGestureRef.current = false
-      console.log("[v0] Notification audio started successfully")
+      //console.log("[v0] Notification audio started successfully")
     } catch (error) {
-      console.log("[v0] Audio autoplay blocked:", error)
+      //console.log("[v0] Audio autoplay blocked:", error)
 
       if (!awaitingGestureRef.current) {
         awaitingGestureRef.current = true
@@ -98,9 +98,9 @@ export function NotificationAudioController({
             await audio.play()
             awaitingGestureRef.current = false
             audioUnlockedRef.current = true
-            console.log("[v0] Audio enabled after user gesture")
+            //console.log("[v0] Audio enabled after user gesture")
           } catch (e) {
-            console.log("[v0] Still unable to play audio:", e)
+            //console.log("[v0] Still unable to play audio:", e)
           }
         }
 
@@ -126,20 +126,20 @@ export function NotificationAudioController({
     const prev = prevUnseenRef.current
     const curr = unseenCount
 
-    console.log("[v0] Notification count changed - prev:", prev, "curr:", curr, "alertEnabled:", alertEnabled)
+    //console.log("[v0] Notification count changed - prev:", prev, "curr:", curr, "alertEnabled:", alertEnabled)
 
     if (alertEnabled && prev === 0 && curr > 0) {
-      console.log("[v0] Playing notification alert - conditions met")
+      //console.log("[v0] Playing notification alert - conditions met")
       tryPlay()
     } else if (alertEnabled && prev < curr && curr > 0) {
-      console.log("[v0] Playing notification alert - count increased from", prev, "to", curr)
+      //console.log("[v0] Playing notification alert - count increased from", prev, "to", curr)
       tryPlay()
     } else {
-      console.log("[v0] Not playing alert - prev:", prev, "curr:", curr, "alertEnabled:", alertEnabled)
+      //console.log("[v0] Not playing alert - prev:", prev, "curr:", curr, "alertEnabled:", alertEnabled)
     }
 
     if (curr === 0 || !alertEnabled) {
-      console.log("[v0] Stopping notification alert")
+      //console.log("[v0] Stopping notification alert")
       audio.pause()
       audio.currentTime = 0
     }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { MapPin, CalendarIcon, Play, Square, AlertCircle, Timer } from "lucide-react"
-import { GET_TIME_ENTRIES, CLOCK_IN_MUTATION, CLOCK_OUT_MUTATION } from "@/lib/graphql-queries"
+import { GET_TIME_ENTRIES, CLOCK_IN_MUTATION, CLOCK_OUT_MUTATION, GET_TODAY_WORK_SCHEDULE } from "@/lib/graphql-queries"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { useLang, getISODateInTZ, TN_TIMEZONE } from "@/lib/i18n"
@@ -27,6 +27,23 @@ type TimeEntry = {
   clock_in?: string | null
   clock_out?: string | null
   total_hours?: number | null
+}
+
+type WorkSchedule = {
+  id: string
+  employee_id: string
+  date: string
+  start_time?: string | null
+  end_time?: string | null
+  shift_type: string
+  job_position?: string | null
+  is_working: boolean
+  is_worked?: boolean | null
+  location_id?: string | null
+  day?: string | null
+  retard?: number | null
+  status?: string | null
+  traite?: string | null
 }
 
 function isFiniteNumber(n: unknown): n is number {
@@ -124,10 +141,21 @@ export default function PointeusePage() {
     skip: !user?.employee_id,
     fetchPolicy: "cache-and-network",
   })
+
+  const { data: todayScheduleData, refetch: refetchSchedule } = useQuery(GET_TODAY_WORK_SCHEDULE, {
+    variables: {
+      employee_id: user?.employee_id,
+      date: todayLocal,
+    },
+    skip: !user?.employee_id,
+    fetchPolicy: "cache-and-network",
+  })
+
   const [clockIn] = useMutation(CLOCK_IN_MUTATION)
   const [clockOut] = useMutation(CLOCK_OUT_MUTATION)
 
   const todayEntries: TimeEntry[] = timeEntriesData?.timeEntries ?? []
+  const todaySchedule: WorkSchedule | null = todayScheduleData?.todayWorkSchedule?.[0] ?? null
 
   // Consider an entry active if status is "active" (any case) OR no clock_out yet.
   const activeEntry = useMemo(() => {
@@ -158,18 +186,7 @@ export default function PointeusePage() {
     }
   }, [activeEntry])
 
-  // Geolocation (best-effort)
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
-      },
-      () => {
-        // silent
-      },
-    )
-  }, [])
+  // Remove geolocation from page load; only get position on clock-in
 
   const handleClockIn = async () => {
     if (!user?.location_id) {
@@ -184,7 +201,8 @@ export default function PointeusePage() {
       setCheckingPosition(true)
       // Request current geolocation at click time
       const pos: GeolocationPosition = await new Promise((resolve, reject) => {
-        if (typeof navigator === "undefined" || !navigator.geolocation) return reject(new Error("Geolocation unavailable"))
+        if (typeof navigator === "undefined" || !navigator.geolocation)
+          return reject(new Error("Geolocation unavailable"))
         navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
       })
       const current = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
@@ -198,7 +216,7 @@ export default function PointeusePage() {
       if (latStr == null || lngStr == null) {
         toast({
           title: t("toast_error", "Erreur"),
-          description: t("location_missing_coords", "Le restaurant n’a pas de coordonnées enregistrées"),
+          description: t("location_missing_coords", "Le restaurant n'a pas de coordonnées enregistrées"),
           variant: "destructive",
         })
         setCheckingPosition(false)
@@ -215,7 +233,7 @@ export default function PointeusePage() {
       if (curLat5 !== tgtLat5 || curLng5 !== tgtLng5) {
         toast({
           title: t("not_at_location", "Hors position"),
-          description: `${t("not_in_location_position", "Vous n’êtes pas à la position du restaurant.")} ${t("expected_location", "Position attendue")}: ${tgtLat5}, ${tgtLng5}`,
+          description: `${t("not_in_location_position", "Vous n'êtes pas à la position du restaurant.")} ${t("expected_location", "Position attendue")}: ${tgtLat5}, ${tgtLng5}`,
           variant: "destructive",
         })
         setCheckingPosition(false)
@@ -231,10 +249,11 @@ export default function PointeusePage() {
       setIsClocked(true)
       setCurrentEntry(result.data?.clockIn ?? null)
       toast({
-        title: t("check_in", "Pointage d’arrivée"),
+        title: t("check_in", "Pointage d'arrivée"),
         description: t("toast_checkin_success", "Vous avez pointé votre arrivée avec succès"),
       })
       refetch()
+      refetchSchedule()
     } catch (error) {
       toast({
         title: t("toast_error", "Erreur"),
@@ -259,6 +278,7 @@ export default function PointeusePage() {
         description: t("toast_checkout_success", "Vous avez pointé votre départ avec succès"),
       })
       refetch()
+      refetchSchedule()
     } catch (error) {
       toast({
         title: t("toast_error", "Erreur"),
@@ -287,6 +307,25 @@ export default function PointeusePage() {
     }, 0)
   }
 
+  const checkTardiness = () => {
+    if (!todaySchedule?.start_time) return null
+
+    const now = new Date()
+    const scheduledStart = new Date(`${todayLocal}T${todaySchedule.start_time}`)
+    const diffMinutes = (now.getTime() - scheduledStart.getTime()) / (1000 * 60)
+
+    if (diffMinutes > 15) {
+      return {
+        isLate: true,
+        minutesLate: Math.floor(diffMinutes),
+        penalty: todaySchedule.retard || 0,
+      }
+    }
+    return { isLate: false, minutesLate: 0, penalty: 0 }
+  }
+
+  const tardinessInfo = checkTardiness()
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -308,6 +347,66 @@ export default function PointeusePage() {
           </div>
         </div>
       </div>
+
+      {todaySchedule && (
+        <div className="glass-card rounded-3xl shadow-2xl border border-white/10 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900/80 backdrop-blur-futuristic">
+          <div className="px-8 pt-8 pb-4">
+            <div className="flex items-center gap-2 mb-4">
+              <CalendarIcon className="w-5 h-5 text-blue-400" />
+              <span className="text-lg font-semibold text-slate-200" dir="auto">
+                {t("today_schedule", "Horaire du jour")}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="text-center p-4 rounded-xl bg-white/5">
+                <div className="text-xl font-bold text-blue-400">
+                  {todaySchedule.start_time
+                    ? formatTime(parseDbDateLocal(`${todayLocal}T${todaySchedule.start_time}`) || new Date(), {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })
+                    : "—"}
+                </div>
+                <div className="text-sm text-slate-300" dir="auto">
+                  {t("start_time", "Heure d'arrivée")}
+                </div>
+              </div>
+              <div className="text-center p-4 rounded-xl bg-white/5">
+                <div className="text-xl font-bold text-green-400">
+                  {todaySchedule.end_time
+                    ? formatTime(parseDbDateLocal(`${todayLocal}T${todaySchedule.end_time}`) || new Date(), {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })
+                    : "—"}
+                </div>
+                <div className="text-sm text-slate-300" dir="auto">
+                  {t("end_time", "Heure de départ")}
+                </div>
+              </div>
+              <div className="text-center p-4 rounded-xl bg-white/5">
+                <div className="text-xl font-bold text-orange-400">{todaySchedule.shift_type}</div>
+                <div className="text-sm text-slate-300" dir="auto">
+                  {t("shift_type", "Type de service")}
+                </div>
+              </div>
+            </div>
+            {tardinessInfo?.isLate && (
+              <Alert className="mt-4 border-orange-500/50 bg-orange-500/10">
+                <AlertCircle className="h-4 w-4 text-orange-500" />
+                <AlertDescription className="text-orange-200" dir="auto">
+                  {t("tardiness_warning", "Attention: Vous êtes en retard de")} {tardinessInfo.minutesLate}{" "}
+                  {t("minutes", "minutes")}.
+                  {tardinessInfo.penalty > 0 &&
+                    ` ${t("penalty_applied", "Pénalité appliquée")}: ${tardinessInfo.penalty} DT`}
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Status */}
       <div className="glass-card rounded-3xl shadow-2xl border border-white/10 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900/80 backdrop-blur-futuristic">

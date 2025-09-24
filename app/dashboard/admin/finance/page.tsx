@@ -1014,7 +1014,7 @@ function WorkCalendarModal({
       toast.error("Erreur lors du paiement")
     }
   }
-console.log('infractions ddd', infractionsCount, discData?.infractions)
+//console.log('infractions ddd', infractionsCount, discData?.infractions)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

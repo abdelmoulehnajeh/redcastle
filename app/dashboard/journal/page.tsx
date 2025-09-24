@@ -1,7 +1,8 @@
 "use client"
 
+import React from "react"
 import { useMemo } from "react"
-import { Calendar, Clock } from 'lucide-react'
+import { Calendar, Clock } from "lucide-react"
 import { useQuery } from "@apollo/client"
 import { useAuth } from "@/lib/auth-context"
 import { GET_WORK_SCHEDULES } from "@/lib/graphql-queries"
@@ -24,6 +25,10 @@ type Dict = {
   noSessions: string
   worked: string
   off: string
+  nonTravaille: string
+  travaille: string
+  enTravaille: string
+  vide: string
 }
 
 const translations: Record<Lang, Dict> = {
@@ -40,6 +45,10 @@ const translations: Record<Lang, Dict> = {
     noSessions: "Aucune session trouvée.",
     worked: "Travaillé",
     off: "Repos",
+    nonTravaille: "Non Travaillé",
+    travaille: "Travaillé",
+    enTravaille: "En Travaille",
+    vide: "",
   },
   ar: {
     headerTitle: "سجل العمل",
@@ -54,9 +63,14 @@ const translations: Record<Lang, Dict> = {
     noSessions: "لا توجد جلسات.",
     worked: "تم العمل",
     off: "راحة",
+    nonTravaille: "لم يعمل",
+    travaille: "تم العمل",
+    enTravaille: "يعمل حالياً",
+    vide: "",
   },
 }
 
+// Move localStorage access to useEffect below
 function parseAnyDate(input: string | number | Date): Date | null {
   if (input instanceof Date) return isNaN(input.getTime()) ? null : input
   if (typeof input === "number") {
@@ -98,9 +112,9 @@ function formatISOInTunis(d: Date) {
     day: "2-digit",
   })
   const parts = fmt.formatToParts(d)
-  const y = parts.find(p => p.type === "year")?.value ?? "0000"
-  const m = parts.find(p => p.type === "month")?.value ?? "01"
-  const da = parts.find(p => p.type === "day")?.value ?? "01"
+  const y = parts.find((p) => p.type === "year")?.value ?? "0000"
+  const m = parts.find((p) => p.type === "month")?.value ?? "01"
+  const da = parts.find((p) => p.type === "day")?.value ?? "01"
   return `${y}-${m}-${da}`
 }
 
@@ -123,7 +137,102 @@ function shiftLabel(value: string, lang: Lang) {
   return value || "—"
 }
 
+function getCurrentDateInTunis(): string {
+  const now = new Date()
+  return formatISOInTunis(now)
+}
+
+function getDayStatus(scheduleDate: string | number): "past" | "current" | "future" {
+  const currentDate = getCurrentDateInTunis()
+  const scheduleDay = parseAnyDate(scheduleDate)
+
+  if (!scheduleDay) return "future"
+
+  const scheduleDateStr = formatISOInTunis(scheduleDay)
+
+  if (scheduleDateStr < currentDate) return "past"
+  if (scheduleDateStr === currentDate) return "current"
+  return "future"
+}
+
+function getWorkStatus(schedule: any, dayStatus: "past" | "current" | "future", t: Dict): string {
+  if (dayStatus === "future") {
+    return t.vide // Empty for future days
+  }
+
+  if (dayStatus === "past") {
+    return schedule.is_worked ? t.travaille : t.nonTravaille
+  }
+
+  if (dayStatus === "current") {
+    return schedule.is_working ? t.enTravaille : t.nonTravaille
+  }
+
+  return t.vide
+}
+
+function getStatusStyling(schedule: any, dayStatus: "past" | "current" | "future") {
+  if (dayStatus === "future") {
+    return {
+      bgClass: "bg-slate-700/40",
+      textClass: "text-slate-400",
+      iconClass: "text-slate-400",
+    }
+  }
+
+  if (dayStatus === "past") {
+    if (schedule.is_worked) {
+      return {
+        bgClass: "bg-green-900/40",
+        textClass: "text-green-300",
+        iconClass: "text-green-400",
+      }
+    } else {
+      return {
+        bgClass: "bg-red-900/40",
+        textClass: "text-red-300",
+        iconClass: "text-red-400",
+      }
+    }
+  }
+
+  if (dayStatus === "current") {
+    if (schedule.is_working) {
+      return {
+        bgClass: "bg-blue-800/40",
+        textClass: "text-blue-200",
+        iconClass: "text-blue-300",
+      }
+    } else {
+      return {
+        bgClass: "bg-orange-900/40",
+        textClass: "text-orange-300",
+        iconClass: "text-orange-400",
+      }
+    }
+  }
+
+  return {
+    bgClass: "bg-slate-700/40",
+    textClass: "text-slate-400",
+    iconClass: "text-slate-400",
+  }
+}
+
 export default function JournalPage() {
+  // Log user info from localStorage only on client
+  React.useEffect(() => {
+    const userString = typeof window !== "undefined" ? localStorage.getItem("restaurant_user") : null
+    if (userString) {
+      try {
+        const user = JSON.parse(userString)
+        //console.log("username:", user.username)
+        //console.log("id:", user.id)
+      } catch (e) {
+        console.warn("Failed to parse restaurant_user from localStorage:", e)
+      }
+    }
+  }, [])
   // i18n and formatting
   const { lang, formatDate } = useLang()
   const t = translations[lang]
@@ -140,17 +249,24 @@ export default function JournalPage() {
 
   const sortedSchedules = useMemo(() => {
     const items = [...schedules]
-    const sortKey = (raw: string | number) => {
-      const d = parseAnyDate(raw)
-      if (!d) return { dow: 8, ts: Number.MAX_SAFE_INTEGER } // push invalid to end
-      const dow = d.getDay() === 0 ? 7 : d.getDay() // Mon=1..Sun=7
-      return { dow, ts: d.getTime() }
-    }
     return items.sort((a: any, b: any) => {
-      const A = sortKey(a.date)
-      const B = sortKey(b.date)
-      if (A.dow !== B.dow) return A.dow - B.dow
-      return A.ts - B.ts
+      const dateA = parseAnyDate(a.date)
+      const dateB = parseAnyDate(b.date)
+
+      if (!dateA && !dateB) return 0
+      if (!dateA) return 1
+      if (!dateB) return -1
+
+      // Sort by date first
+      const dateComparison = dateA.getTime() - dateB.getTime()
+      if (dateComparison !== 0) return dateComparison
+
+      // If same date, sort by shift type (Matin before Soirée)
+      const shiftOrder = { Matin: 1, Soirée: 2, Doublage: 3, Repos: 4 }
+      const shiftA = shiftOrder[a.shift_type as keyof typeof shiftOrder] || 5
+      const shiftB = shiftOrder[b.shift_type as keyof typeof shiftOrder] || 5
+
+      return shiftA - shiftB
     })
   }, [schedules])
 
@@ -176,10 +292,7 @@ export default function JournalPage() {
               <Calendar className="size-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h1
-                className="text-lg sm:text-2xl font-semibold tracking-tight text-white"
-                dir="auto"
-              >
+              <h1 className="text-lg sm:text-2xl font-semibold tracking-tight text-white" dir="auto">
                 {t.headerTitle}
               </h1>
               <p className="text-xs sm:text-sm text-white/80" dir="auto">
@@ -234,40 +347,66 @@ export default function JournalPage() {
                         const start = schedule?.start_time ? String(schedule.start_time).slice(0, 5) : "—"
                         const end = schedule?.end_time ? String(schedule.end_time).slice(0, 5) : "—"
                         const shift = shiftLabel(String(schedule.shift_type ?? ""), lang)
+
+                        const dayStatus = getDayStatus(schedule.date)
+                        const rowClasses = {
+                          past: "border-slate-800/70 hover:bg-slate-800/60 opacity-70 bg-slate-900/50",
+                          current: "border-blue-500/50 hover:bg-blue-900/40 bg-blue-900/20 ring-1 ring-blue-500/30",
+                          future: "border-slate-700/50 hover:bg-slate-800/30",
+                        }
+
+                        const textClasses = {
+                          past: "text-slate-400",
+                          current: "text-blue-100 font-medium",
+                          future: "text-white",
+                        }
+
+                        const workStatus = getWorkStatus(schedule, dayStatus, t)
+                        const statusStyling = getStatusStyling(schedule, dayStatus)
+
                         return (
-                          <TableRow
-                            key={schedule.id ?? idx}
-                            className="border-slate-800/70 hover:bg-red-800/40"
-                          >
-                            <TableCell className={`text-white ${align}`} dir="auto">
+                          <TableRow key={schedule.id ?? idx} className={rowClasses[dayStatus]}>
+                            <TableCell className={`${textClasses[dayStatus]} ${align}`} dir="auto">
                               {formatDayLabel(schedule.date)}
+                              {dayStatus === "current" && (
+                                <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-500 text-white">
+                                  {lang === "ar" ? "اليوم" : "Aujourd'hui"}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className={`${align}`}>
                               <Badge
                                 variant={isWorking ? "default" : "secondary"}
-                                className={`px-2 ${isWorking ? "bg-orange-600 text-white" : "bg-red-600"}`}
+                                className={`px-2 ${
+                                  dayStatus === "past"
+                                    ? "bg-slate-600 text-slate-300"
+                                    : dayStatus === "current"
+                                      ? (isWorking ? "bg-blue-600 text-white" : "bg-blue-700 text-blue-100")
+                                      : (isWorking ? "bg-orange-600 text-white" : "bg-red-600")
+                                }`}
                               >
                                 <span dir="auto">{shift}</span>
                               </Badge>
                             </TableCell>
-                            <TableCell className={`text-slate-200 ${align}`}>{start}</TableCell>
-                            <TableCell className={`text-slate-200 ${align}`}>{end}</TableCell>
+                            <TableCell
+                              className={`${dayStatus === "past" ? "text-slate-400" : "text-slate-200"} ${align}`}
+                            >
+                              {start}
+                            </TableCell>
+                            <TableCell
+                              className={`${dayStatus === "past" ? "text-slate-400" : "text-slate-200"} ${align}`}
+                            >
+                              {end}
+                            </TableCell>
                             <TableCell className={`${align}`}>
                               <div
-                                className={`inline-flex items-center gap-2 px-2 py-1 rounded-lg ${isWorking ? "bg-emerald-950/40" : "bg-red-800/40"
-                                  }`}
+                                className={`inline-flex items-center gap-2 px-2 py-1 rounded-lg ${statusStyling.bgClass}`}
                               >
-                                <Clock
-                                  className={`size-4 ${isWorking ? "text-emerald-400" : "text-slate-300"}`}
-                                />
-                                <span
-                                  className={isWorking ? "text-emerald-200" : "text-slate-200"}
-                                  dir="auto"
-                                >
-                                  {isWorking ? t.worked : t.off}
+                                <Clock className={`size-4 ${statusStyling.iconClass}`} />
+                                <span className={statusStyling.textClass} dir="auto">
+                                  {workStatus}
                                 </span>
                               </div>
-
                             </TableCell>
                           </TableRow>
                         )
@@ -280,8 +419,8 @@ export default function JournalPage() {
 
             {/* Mobile: card list */}
             <div className="md:hidden space-y-3">
-              {loading
-                ? Array.from({ length: 5 }).map((_, i) => (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
                   <div key={`m-skel-${i}`} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
                     <div className="h-5 w-2/3 animate-pulse rounded bg-slate-700/50 mb-3" />
                     <div className="grid grid-cols-2 gap-3">
@@ -292,49 +431,89 @@ export default function JournalPage() {
                     </div>
                   </div>
                 ))
-                : (sortedSchedules.length === 0 ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 text-center text-slate-400" dir="auto">
-                    {t.noSessions}
-                  </div>
-                ) : (
-                  sortedSchedules.map((schedule: any, idx: number) => {
-                    const isWorking = !!schedule.is_working
-                    const start = schedule?.start_time ? String(schedule.start_time).slice(0, 5) : "—"
-                    const end = schedule?.end_time ? String(schedule.end_time).slice(0, 5) : "—"
-                    const shift = shiftLabel(String(schedule.shift_type ?? ""), lang)
-                    return (
-                      <div
-                        key={schedule.id ?? idx}
-                        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="font-medium text-white" dir="auto">
+              ) : sortedSchedules.length === 0 ? (
+                <div
+                  className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 text-center text-slate-400"
+                  dir="auto"
+                >
+                  {t.noSessions}
+                </div>
+              ) : (
+                sortedSchedules.map((schedule: any, idx: number) => {
+                  const isWorking = !!schedule.is_working
+                  const start = schedule?.start_time ? String(schedule.start_time).slice(0, 5) : "—"
+                  const end = schedule?.end_time ? String(schedule.end_time).slice(0, 5) : "—"
+                  const shift = shiftLabel(String(schedule.shift_type ?? ""), lang)
+
+                  const dayStatus = getDayStatus(schedule.date)
+                  const cardClasses = {
+                    past: "rounded-xl border border-slate-800 bg-slate-900/40 p-4 opacity-70",
+                    current: "rounded-xl border border-blue-500/50 bg-blue-900/30 p-4 ring-1 ring-blue-500/30",
+                    future: "rounded-xl border border-slate-700/50 bg-slate-900/60 p-4",
+                  }
+
+                  const textClasses = {
+                    past: "text-slate-400",
+                    current: "text-blue-100 font-medium",
+                    future: "text-white",
+                  }
+
+                  const workStatus = getWorkStatus(schedule, dayStatus, t)
+                  const statusStyling = getStatusStyling(schedule, dayStatus)
+
+                  return (
+                    <div key={schedule.id ?? idx} className={cardClasses[dayStatus]}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${textClasses[dayStatus]}`} dir="auto">
                             {formatDayLabel(schedule.date)}
                           </p>
-                          <Badge
-                            variant={isWorking ? "default" : "secondary"}
-                            className={`px-2 ${isWorking ? "bg-blue-600 text-white" : ""}`}
-                          >
-                            <span dir="auto">{shift}</span>
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="text-slate-400" dir="auto">{t.thStart}</div>
-                          <div className="text-slate-200 text-right">{start}</div>
-                          <div className="text-slate-400" dir="auto">{t.thEnd}</div>
-                          <div className="text-slate-200 text-right">{end}</div>
-                          <div className="text-slate-400" dir="auto">{t.thStatus}</div>
-                          <div className="text-slate-200 text-right flex items-center justify-end gap-2">
-                            <Clock className={`size-4 ${isWorking ? "text-emerald-400" : "text-slate-400"}`} />
-                            <span className={isWorking ? "text-emerald-300" : "text-slate-400"} dir="auto">
-                              {isWorking ? t.worked : t.off}
+                          {dayStatus === "current" && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-500 text-white">
+                              {lang === "ar" ? "اليوم" : "Aujourd'hui"}
                             </span>
-                          </div>
+                          )}
+                        </div>
+                        <Badge
+                          variant={isWorking ? "default" : "secondary"}
+                          className={`px-2 ${
+                            dayStatus === "past"
+                              ? "bg-slate-600 text-slate-300"
+                              : dayStatus === "current"
+                                ? (isWorking ? "bg-blue-600 text-white" : "bg-blue-700 text-blue-100")
+                                : (isWorking ? "bg-blue-600 text-white" : "")
+                          }`}
+                        >
+                          <span dir="auto">{shift}</span>
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className={`${dayStatus === "past" ? "text-slate-500" : "text-slate-400"}`} dir="auto">
+                          {t.thStart}
+                        </div>
+                        <div className={`${dayStatus === "past" ? "text-slate-400" : "text-slate-200"} text-right`}>
+                          {start}
+                        </div>
+                        <div className={`${dayStatus === "past" ? "text-slate-500" : "text-slate-400"}`} dir="auto">
+                          {t.thEnd}
+                        </div>
+                        <div className={`${dayStatus === "past" ? "text-slate-400" : "text-slate-200"} text-right`}>
+                          {end}
+                        </div>
+                        <div className={`${dayStatus === "past" ? "text-slate-500" : "text-slate-400"}`} dir="auto">
+                          {t.thStatus}
+                        </div>
+                        <div className={`text-right flex items-center justify-end gap-2`}>
+                          <Clock className={`size-4 ${statusStyling.iconClass}`} />
+                          <span className={statusStyling.textClass} dir="auto">
+                            {workStatus}
+                          </span>
                         </div>
                       </div>
-                    )
-                  })
-                ))}
+                    </div>
+                  )
+                })
+              )}
             </div>
           </CardContent>
         </Card>

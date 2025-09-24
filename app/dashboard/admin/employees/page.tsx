@@ -54,7 +54,11 @@ import {
   Building,
 } from "lucide-react"
 
-import { GET_ADMIN_DATA, CREATE_EMPLOYEE, DELETE_EMPLOYEE } from "@/lib/graphql-queries"
+import { DatePicker } from "@/components/ui/date-picker"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
+
+import { GET_ADMIN_DATA, CREATE_EMPLOYEE, DELETE_EMPLOYEE, GET_EMPLOYEES_BY_DATE } from "@/lib/graphql-queries"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 
@@ -344,6 +348,7 @@ export default function AdminEmployeesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [locationFilter, setLocationFilter] = useState("all")
+  const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined)
 
   // dialogs and forms
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -387,23 +392,53 @@ export default function AdminEmployeesPage() {
     notifyOnNetworkStatusChange: false,
   })
 
+  const {
+    data: employeesByDateData,
+    loading: employeesByDateLoading,
+    refetch: refetchEmployeesByDate,
+  } = useQuery(GET_EMPLOYEES_BY_DATE, {
+    variables: { date: dateFilter ? format(dateFilter, "yyyy-MM-dd") : "" },
+    skip: !dateFilter,
+    fetchPolicy: "cache-first",
+  })
+
   const [createEmployee] = useMutation(CREATE_EMPLOYEE)
   const [deleteEmployee] = useMutation(DELETE_EMPLOYEE)
 
   const employees: Employee[] = data?.employees || []
   const locations: Location[] = data?.locations || []
 
-  const filteredEmployees = employees.filter((employee) => {
-    const matchesSearch =
-      employee.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.prenom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.job_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (employee.user?.username || "").toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || employee.status === statusFilter
-    const matchesLocation = locationFilter === "all" || employee.location?.id === locationFilter
-    return matchesSearch && matchesStatus && matchesLocation
-  })
+  const filteredEmployees = useMemo(() => {
+    let baseEmployees = employees
+
+    // If date filter is active, use employees from date query
+    if (dateFilter && employeesByDateData?.employeesByDate) {
+      const employeesWorkingOnDate = employeesByDateData.employeesByDate.map((schedule: any) => ({
+        ...schedule.employee,
+        // Add schedule info for display
+        workSchedule: {
+          shift_type: schedule.shift_type,
+          job_position: schedule.job_position,
+          start_time: schedule.start_time,
+          end_time: schedule.end_time,
+          location_id: schedule.location_id,
+        },
+      }))
+      baseEmployees = employeesWorkingOnDate
+    }
+
+    return baseEmployees.filter((employee) => {
+      const matchesSearch =
+        employee.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.prenom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.job_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (employee.user?.username || "").toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === "all" || employee.status === statusFilter
+      const matchesLocation = locationFilter === "all" || employee.location?.id === locationFilter
+      return matchesSearch && matchesStatus && matchesLocation
+    })
+  }, [employees, employeesByDateData, dateFilter, searchTerm, statusFilter, locationFilter])
 
   const fmt = (n: number) => n.toLocaleString(locale)
   const fmtMoney = (n: number) => `${fmt(n)}DT`
@@ -708,7 +743,48 @@ export default function AdminEmployeesPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="flex-1">
+                  <DatePicker
+                    date={dateFilter}
+                    onDateChange={setDateFilter}
+                    placeholder="Filtrer par date de travail"
+                    className="h-8 sm:h-10"
+                  />
+                </div>
               </div>
+              {(dateFilter || locationFilter !== "all" || searchTerm.trim()) && (
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-700">
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    {dateFilter && (
+                      <span className="bg-blue-600/20 border border-blue-500/30 rounded-md px-2 py-1">
+                        Date: {format(dateFilter, "dd/MM/yyyy", { locale: fr })}
+                      </span>
+                    )}
+                    {locationFilter !== "all" && (
+                      <span className="bg-purple-600/20 border border-purple-500/30 rounded-md px-2 py-1">
+                        Restaurant: {locations.find((l: any) => l.id === locationFilter)?.name}
+                      </span>
+                    )}
+                    {searchTerm.trim() && (
+                      <span className="bg-green-600/20 border border-green-500/30 rounded-md px-2 py-1">
+                        Recherche: {searchTerm}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDateFilter(undefined)
+                      setLocationFilter("all")
+                      setSearchTerm("")
+                    }}
+                    className="text-slate-300 border-slate-600 hover:bg-slate-700/50"
+                  >
+                    Effacer filtres
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1196,6 +1272,12 @@ export default function AdminEmployeesPage() {
                         <TableCell className="text-slate-200">{employee.email}</TableCell>
                         <TableCell className="text-slate-200" dir="auto">
                           {employee.job_title}
+                          {dateFilter && (employee as any).workSchedule && (
+                            <div className="text-xs text-blue-300 mt-1">
+                              {(employee as any).workSchedule.shift_type} ({(employee as any).workSchedule.start_time}-
+                              {(employee as any).workSchedule.end_time})
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-slate-200" dir="auto">
                           {employee.location ? employee.location.name : t.notAssigned}
@@ -1279,7 +1361,9 @@ export default function AdminEmployeesPage() {
 
             {filteredEmployees.length === 0 && (
               <div className="text-center py-8 text-slate-400" dir="auto">
-                {t.noneFound}
+                {dateFilter
+                  ? `Aucun employé ne travaille le ${format(dateFilter, "dd/MM/yyyy", { locale: fr })}`
+                  : t.noneFound}
               </div>
             )}
             {error && (

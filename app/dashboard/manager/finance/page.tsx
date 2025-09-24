@@ -260,19 +260,7 @@ export default function ManagerFinancePage() {
                     {editingEmployee?.id === employee.id ? (
                       <div className="space-y-3 sm:space-y-4 w-full lg:w-auto lg:min-w-[400px]">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs font-medium text-white" dir="auto">
-                              {t.salary}
-                            </Label>
-                            <Input
-                              type="number"
-                              value={editData.salaire}
-                              onChange={(e) =>
-                                setEditData({ ...editData, salaire: Number.parseInt(e.target.value) || 0 })
-                              }
-                              className="text-xs h-8 glass-card bg-gradient-to-br from-blue-900/40 to-green-900/40 border border-white/10 text-white"
-                            />
-                          </div>
+         
                           <div className="space-y-1">
                             <Label className="text-xs font-medium text-white" dir="auto">
                               {t.bonus}
@@ -366,14 +354,7 @@ export default function ManagerFinancePage() {
                     ) : (
                       <div className="space-y-3 w-full lg:w-auto">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                          <div className="text-center">
-                            <div className="text-sm sm:text-base font-bold text-white">
-                              <Money amount={employee.salaire || 0} />
-                            </div>
-                            <div className="text-xs text-blue-200" dir="auto">
-                              {t.salary}
-                            </div>
-                          </div>
+                      
                           <div className="text-center">
                             <div className="text-sm sm:text-base font-bold text-green-400">
                               <Money amount={employee.prime || 0} />

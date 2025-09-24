@@ -81,8 +81,7 @@ import { Pool } from "pg"
 
 // Database connection
 const pool = new Pool({
-  connectionString:
-    "postgresql://neondb_owner:npg_PkV0ch8aUzKy@ep-super-shadow-adz5agx9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+  connectionString: "postgresql://neondb_owner:npg_PkV0ch8aUzKy@ep-super-shadow-adz5agx9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
 })
 // Ensure payroll and notifications tables exist
 async function ensureTables() {
@@ -231,6 +230,16 @@ type Mutation {
   # ...existing mutation definitions...
   createOrUpdateManyUserWorkSchedules(users: [UserSchedulesInput!]!): Boolean!
   updateUserRole(user_id: ID!, role: String!): User
+  createNotification(
+    user_id: ID!
+    role: String!
+    title: String!
+    message: String
+    type: String!
+    reference_id: String
+    data: String
+  ): Boolean!
+  deleteWorkSchedule(id: ID!): Boolean!
 }
 
 input UserSchedulesInput {
@@ -287,6 +296,7 @@ type Employee {
   created_at: String
   price_j: Float
   location: Location
+  employees: [Employee!]!
   profile: Profile
   user: User
 }
@@ -363,6 +373,7 @@ location_id: String
 day: String
 retard: String
 status: String
+traite: String
 employee: Employee
 location: Location
 }
@@ -489,6 +500,8 @@ type Query {
   retards(employee_id: ID!, period: String): [Retard!]!
   tenuesTravail(employee_id: ID!): [TenueTravail!]!
   weeklyTemplateSchedules: [WorkSchedule!]!
+  todayWorkSchedule(employee_id: ID!, date: String!): [WorkSchedule!]!
+  employeesByDate(date: String!): [WorkSchedule!]!
 }
 
 type Mutation {
@@ -631,6 +644,7 @@ type Mutation {
     price: Float!
   ): TenueTravail
   deleteTenueTravail(id: ID!): Boolean!
+  deleteWorkSchedulesByEmployee(employee_id: ID!): Boolean!
 }
 
 input WorkScheduleInput {
@@ -972,50 +986,52 @@ const resolvers = {
         if (!employee_id) {
           throw new Error("employee_id is required to fetch work schedules.")
         }
-        let tableName
-        try {
-          tableName = await getUserTableName(employee_id)
-        } catch (err) {
-          // If user table doesn't exist, fallback to default table
-          tableName = "work_schedules"
-        }
-        let query = `SELECT *, l.name as location_name, l.address as location_address FROM "${tableName}" ws LEFT JOIN locations l ON ws.location_id = l.id WHERE 1=1`
-        const params: any[] = []
+        // Get the correct per-user table name
+        const tableName = await getUserTableName(employee_id)
+        let query = `SELECT id, employee_id, date, shift_type, job_position, is_working, is_worked, start_time, end_time, created_at, day, location_id, retard, status, traite FROM "${tableName}"`
+        const params = []
         if (date) {
           params.push(date)
-          query += ` AND ws.date = $${params.length}`
+          query += ` WHERE date = $${params.length}`
         }
-        query += " ORDER BY ws.date DESC"
+        query += " ORDER BY date DESC"
         const result = await pool.query(query, params)
-        // Only return rows with a valid id
+        //console.log("[workSchedules] Fetched work schedules:", result.rows)
         return result.rows
-          .filter((row) => row.id != null)
-          .map((row) => ({
-            ...row,
-            location: row.location_name
-              ? {
-                  id: row.location_id,
-                  name: row.location_name,
-                  address: row.location_address,
-                }
-              : null,
-          }))
       } catch (error) {
         console.error("Error fetching work schedules:", error)
         throw new Error("Failed to fetch work schedules")
       }
     },
+    todayWorkSchedule: async (_: any, { employee_id, date }: { employee_id: string; date: string }) => {
+      try {
+        if (!employee_id || !date) {
+          throw new Error("employee_id and date are required to fetch today's work schedule.")
+        }
+        // Get the correct per-user table name
+        const tableName = await getUserTableName(employee_id)
+
+        const query = `SELECT id, employee_id, date, shift_type, job_position, is_working, is_worked, start_time, end_time, created_at, day, location_id, retard, status, traite FROM "${tableName}" WHERE date = $1`
+        const result = await pool.query(query, [date])
+
+        //console.log("[todayWorkSchedule] Fetched today's work schedule:", result.rows)
+        return result.rows
+      } catch (error) {
+        console.error("Error fetching today's work schedule:", error)
+        throw new Error("Failed to fetch today's work schedule")
+      }
+    },
     workSchedulesRange: async (_: any, { employee_id }: { employee_id: string }) => {
       try {
-        console.log("[workSchedulesRange] Fetching work schedules for employee_id:", employee_id)
+        //console.log("[workSchedulesRange] Fetching work schedules for employee_id:", employee_id)
         const tableName = await getUserTableName(employee_id)
-        console.log("[workSchedulesRange] dssssssssUsing table name:", tableName)
+        //console.log("[workSchedulesRange] dssssssssUsing table name:", tableName)
         // Fetch all rows for this employee in the per-user table, exactly as saved
         const result = await pool.query(`SELECT * FROM "${tableName}" WHERE employee_id = $1 ORDER BY date ASC`, [
           employee_id,
         ])
         // DEBUG: Log the table name and all rows fetched
-        console.log("[workSchedulesRange] RAW DB rows for", tableName, ":", result.rows)
+        //console.log("[workSchedulesRange] RAW DB rows for", tableName, ":", result.rows)
 
         return result.rows
       } catch (error) {
@@ -1298,14 +1314,14 @@ const resolvers = {
       try {
         if (period) {
           const likeRef = `${period}%`
-          console.log("eeee", { employee_id, likeRef })
+          //console.log("eeee", { employee_id, likeRef })
 
           const q = `SELECT * FROM infractions
                      WHERE employee_id = $1
                        AND dat::text LIKE $2
                      ORDER BY dat DESC`
           const result = await pool.query(q, [employee_id, likeRef])
-          console.log("rrrr", result.rows)
+          //console.log("rrrr", result.rows)
           return result.rows
         } else {
           const result = await pool.query(
@@ -1374,14 +1390,83 @@ const resolvers = {
         return []
       }
     },
+    employeesByDate: async (_: any, { date }: { date: string }) => {
+      try {
+        if (!date) {
+          throw new Error("date is required to fetch employees by date.")
+        }
+
+
+        // Get all employees first
+        const employeesResult = await pool.query("SELECT employee_id, username FROM users ")
+        const employees = employeesResult.rows
+
+        const allSchedules = []
+
+        // For each employee, check their personal schedule table
+        for (const employee of employees) {
+          try {
+            const tableName = await getUserTableName(employee.employee_id)
+            const query = `SELECT id, employee_id, date, shift_type, job_position, is_working, is_worked, start_time, end_time, created_at, day, location_id, retard, status, traite FROM "${tableName}" WHERE date = $1 AND is_working = true`
+            const result = await pool.query(query, [date])
+
+            // Add employee info to each schedule
+            for (const schedule of result.rows) {
+              allSchedules.push({
+                ...schedule,
+                employee: {
+                  id: employee.id,
+                  username: employee.username,
+                },
+              })
+            }
+          } catch (error) {
+            console.error(`Error fetching schedule for employee ${employee.id}:`, error)
+            // Continue with other employees even if one fails
+          }
+        }
+
+        //console.log("[employeesByDate] Found schedules:", allSchedules.length)
+        return allSchedules
+      } catch (error) {
+        console.error("Error fetching employees by date:", error)
+        throw new Error("Failed to fetch employees by date")
+      }
+    },
   },
   Mutation: {
+    createNotification: async (_: any, { user_id, role, title, message, type, reference_id, data }) => {
+      try {
+        let processedReferenceId = null
+        if (reference_id != null) {
+          if (typeof reference_id === "number") {
+            processedReferenceId = reference_id
+          } else {
+            const parsed = Number.parseInt(String(reference_id), 10)
+            processedReferenceId = isNaN(parsed) ? null : parsed
+          }
+        }
+        let notificationData = data
+        try {
+          if (typeof notificationData !== "string" && notificationData !== null && notificationData !== undefined) {
+            notificationData = JSON.stringify(notificationData)
+          }
+        } catch (e) {
+          notificationData = String(notificationData)
+        }
+        await pool.query(
+          `INSERT INTO notifications (user_id, role, title, message, type, reference_id, data) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [user_id, role, title, message ?? null, type, processedReferenceId, notificationData],
+        )
+        return true
+      } catch (e) {
+        console.error("Failed to create notification:", e)
+        return false
+      }
+    },
     updateUserRole: async (_: any, { user_id, role }: { user_id: string; role: string }) => {
       try {
-        const result = await pool.query(
-          "UPDATE users SET role = $1 WHERE id = $2 RETURNING id, role",
-          [role, user_id]
-        )
+        const result = await pool.query("UPDATE users SET role = $1 WHERE id = $2 RETURNING id, role", [role, user_id])
         if (result.rows.length === 0) throw new Error("User not found")
         await logRecentActivity({
           title: "Rôle utilisateur modifié",
@@ -1420,6 +1505,9 @@ const resolvers = {
         }
         const tableName = await getUserTableName(employee_id)
 
+        const isFromManager = schedules[0]?.status === "manager"
+        const traiteValue = isFromManager ? "manager" : "admin"
+
         for (const sched of schedules) {
           const { date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status } =
             sched
@@ -1431,9 +1519,9 @@ const resolvers = {
           }
           try {
             await pool.query(
-              `INSERT INTO "${tableName}" (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-               ON CONFLICT (date) DO UPDATE SET start_time = $3, end_time = $4, shift_type = $5, job_position = $6, is_working = $7, location_id = $8, day = $9, retard = $10, status = $11`,
+              `INSERT INTO "${tableName}" (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status, traite)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+               ON CONFLICT (date) DO UPDATE SET start_time = $3, end_time = $4, shift_type = $5, job_position = $6, is_working = $7, location_id = $8, day = $9, retard = $10, status = $11, traite = $12`,
               [
                 employee_id,
                 date,
@@ -1446,6 +1534,7 @@ const resolvers = {
                 day,
                 retard,
                 status,
+                traiteValue,
               ],
             )
           } catch (error) {
@@ -1496,6 +1585,7 @@ const resolvers = {
           }
 
           try {
+            const workScheduleStatus = isFromManager ? "manager" : "active"
             await pool.query(
               `INSERT INTO work_schedules (employee_id, date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
@@ -1510,7 +1600,7 @@ const resolvers = {
                 pattern.location_id,
                 dayName,
                 null,
-                "active",
+                workScheduleStatus,
               ],
             )
           } catch (error) {
@@ -1540,17 +1630,46 @@ const resolvers = {
     },
     createManagerWorkSchedule: async (_: any, { employee_id, schedules }: any) => {
       try {
+        const tableName = await getUserTableName(employee_id)
         const results = []
 
         for (const schedule of schedules) {
-          const { date, start_time, end_time, shift_type, job_position, is_working } = schedule
+          const { date, start_time, end_time, shift_type, job_position, is_working, location_id, day, retard, status } =
+            schedule
+
+          const finalStartTime = is_working ? start_time : "00:00:00"
+          const finalEndTime = is_working ? end_time : "00:00:00"
 
           const result = await pool.query(
-            `INSERT INTO manager_work_schedules 
-             (employee_id, shift_type, job_position, start_time, end_time, date, is_working) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) 
+            `INSERT INTO "${tableName}"
+             (employee_id, shift_type, job_position, start_time, end_time, date, is_working, location_id, day, retard, status, traite)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT (date) DO UPDATE SET
+               shift_type = EXCLUDED.shift_type,
+               job_position = EXCLUDED.job_position,
+               start_time = EXCLUDED.start_time,
+               end_time = EXCLUDED.end_time,
+               is_working = EXCLUDED.is_working,
+               location_id = EXCLUDED.location_id,
+               day = EXCLUDED.day,
+               retard = EXCLUDED.retard,
+               status = EXCLUDED.status,
+               traite = EXCLUDED.traite
              RETURNING *`,
-            [employee_id, shift_type, job_position, start_time, end_time, date, is_working],
+            [
+              employee_id,
+              shift_type,
+              job_position,
+              finalStartTime,
+              finalEndTime,
+              date,
+              is_working,
+              location_id,
+              day,
+              retard,
+              "manager",
+              "manager",
+            ],
           )
           results.push(result.rows[0])
         }
@@ -1566,30 +1685,33 @@ const resolvers = {
       try {
         const { type, reference_id, manager_id, employee_id, data, month } = args
 
+        const finalReferenceId = reference_id || Math.floor(Date.now() / 1000) // Unix timestamp as integer
+        const validType = type === "planning_approval" ? "schedule_change" : type
+
         await pool.query(
           "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
-          [type, reference_id, manager_id, data, "pending"],
+          [validType, finalReferenceId, manager_id, data, "pending"],
         )
 
-        // Send notification alert to admin
         const notificationMessage = `Manager has proposed planning for employee ${employee_id} for month ${month}`
         await pool.query(
-          `INSERT INTO notifications (user_id, type, message, reference_id, is_read, created_at) 
-           VALUES ($1, $2, $3, $4, $5, NOW())`,
-          ["admin", "planning_approval", notificationMessage, reference_id, false],
+          `INSERT INTO notifications (user_id, role, title, message, type, reference_id, seen, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [1, "admin", "Planning Approval Request", notificationMessage, "planning_approval", finalReferenceId, false],
         )
 
         return true
       } catch (error) {
         console.error("Error sending approval request:", error)
-        return false
+        throw new Error("Failed to send approval request")
       }
     },
+
     approveManagerSchedule: async (_: any, { approval_id }: any) => {
       try {
         const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1", [approval_id])
         if (!approvalRes.rows.length) return false
-        const { reference_id, data: raw } = approvalRes.rows[0]
+        const { reference_id, data } = approvalRes.rows[0]
         const scheduleRes = await pool.query("SELECT * FROM manager_work_schedules WHERE id = $1", [reference_id])
         if (!scheduleRes.rows.length) return false
 
@@ -1619,10 +1741,10 @@ const resolvers = {
         const mgrUser = mgrUserRes.rows[0]
 
         const schedule =
-          typeof raw === "string"
+          typeof data === "string"
             ? (() => {
                 try {
-                  return JSON.parse(raw)
+                  return JSON.parse(data)
                 } catch {
                   return s
                 }
@@ -1643,7 +1765,7 @@ const resolvers = {
           await createNotification({
             user_id: mgrUser.id,
             role: "manager",
-            title,
+            title: "Planning employé mis à jour",
             message: "Planning d'un employé mis à jour.",
             type: "schedule_change",
             reference_id: approval_id,
@@ -1682,20 +1804,11 @@ const resolvers = {
         }
 
         await pool.query(
-          "INSERT INTO work_schedules (employee_id, date, start_time, end_time, shift_type, job_position, is_working) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-          [
-            schedule.employee_id,
-            schedule.date,
-            schedule.start_time,
-            schedule.end_time,
-            schedule.shift_type,
-            schedule.job_position,
-            schedule.is_working,
-          ],
+          "UPDATE work_schedules SET status = 'confirmed' WHERE employee_id = $1 AND status = 'manager'",
+          [schedule.employee_id],
         )
-        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
-          approval_id,
-        ])
+
+        await pool.query("UPDATE admin_approvals SET status = 'noactive', traite = 'oui' WHERE id = $1", [approval_id])
 
         // Notify employee and their manager
         const empUserRes = await pool.query("SELECT id FROM users WHERE employee_id = $1 LIMIT 1", [
@@ -1953,7 +2066,7 @@ const resolvers = {
         // 2. If date is in current week, update work_schedules
         const now = new Date()
         const weekStart = new Date(now)
-        weekStart.setDate(now.getDate() - now.getDay() + 1)
+        weekStart.setDate(now.getDay() === 0 ? now.getDate() - 6 : now.getDate() - (now.getDay() - 1)) // Adjust for Sunday being day 0
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekStart.getDate() + 6)
         const schedDate = new Date(updates.date)
@@ -2115,10 +2228,56 @@ const resolvers = {
     },
     clockIn: async (_: any, { employeeId, locationId }: { employeeId: string; locationId: string }) => {
       try {
+        // Get the user table name for this employee
+        const tableName = await getUserTableName(employeeId)
+
+        // Get today's date in YYYY-MM-DD format
+        const today = new Date().toISOString().split("T")[0]
+
+        // Get today's work schedule to check for tardiness
+        const scheduleResult = await pool.query(`SELECT start_time, retard FROM "${tableName}" WHERE date = $1`, [
+          today,
+        ])
+
+        let retardAmount = 0
+        let isLate = false
+
+        if (scheduleResult.rows.length > 0) {
+          const schedule = scheduleResult.rows[0]
+          if (schedule.start_time) {
+            const now = new Date()
+            const scheduledStart = new Date(`${today}T${schedule.start_time}`)
+            const diffMinutes = (now.getTime() - scheduledStart.getTime()) / (1000 * 60)
+
+            // Check if more than 15 minutes late
+            if (diffMinutes > 15) {
+              isLate = true
+              retardAmount = 20 // 20 DT penalty for being late
+
+              // Insert retard record
+              const retardDescription = `retard dans le pointeuse le date of today ${today.split("-").reverse().join("_")} : ${now.toTimeString().split(" ")[0]}`
+              await pool.query(
+                "INSERT INTO public.retards (name, description, employee_id, price, dat) VALUES ($1, $2, $3, $4, $5)",
+                ["retard auto", retardDescription, employeeId, retardAmount, now],
+              )
+            }
+          }
+        }
+
+        // Insert time entry
         const result = await pool.query(
           "INSERT INTO time_entries (employee_id, location_id, clock_in, date, status) VALUES ($1, $2, NOW(), CURRENT_DATE, 'active') RETURNING *",
           [employeeId, locationId],
         )
+
+        // Update employee status to active
+        await pool.query("UPDATE public.employees SET status='active' WHERE id = $1", [employeeId])
+
+        // Update work schedule record
+        const updateQuery = `UPDATE "${tableName}" SET is_working = true, status = 'en service', traite = 'oui'${isLate ? ", retard = $3" : ""} WHERE date = $1 AND employee_id = $2`
+        const updateParams = isLate ? [today, employeeId, retardAmount] : [today, employeeId]
+        await pool.query(updateQuery, updateParams)
+
         return result.rows[0]
       } catch (error) {
         console.error("Error clocking in:", error)
@@ -2127,10 +2286,32 @@ const resolvers = {
     },
     clockOut: async (_: any, { timeEntryId }: { timeEntryId: string }) => {
       try {
+        // Get the time entry to find employee_id
+        const timeEntryResult = await pool.query("SELECT employee_id FROM time_entries WHERE id = $1", [timeEntryId])
+
+        if (timeEntryResult.rows.length === 0) {
+          throw new Error("Time entry not found")
+        }
+
+        const employeeId = timeEntryResult.rows[0].employee_id
+        const tableName = await getUserTableName(employeeId)
+        const today = new Date().toISOString().split("T")[0]
+
+        // Update time entry
         const result = await pool.query(
           "UPDATE time_entries SET clock_out = NOW(), status = 'completed', total_hours = EXTRACT(EPOCH FROM (NOW() - clock_in))/3600 WHERE id = $1 RETURNING *",
           [timeEntryId],
         )
+
+        // Update employee status to inactive
+        await pool.query("UPDATE public.employees SET status='inactive' WHERE id = $1", [employeeId])
+
+        // Update work schedule record
+        await pool.query(
+          `UPDATE "${tableName}" SET is_worked = true, status = 'fin service', traite = 'oui' WHERE date = $1 AND employee_id = $2`,
+          [today, employeeId],
+        )
+
         return result.rows[0]
       } catch (error) {
         console.error("Error clocking out:", error)
@@ -2482,7 +2663,7 @@ const resolvers = {
       try {
         const { employee_id, name, description, price, dat } = args
         let formattedDate = dat
-        console.log("Received date:", dat)
+        //console.log("Received date:", dat)
         if (dat) {
           if (/^\d+$/.test(String(dat))) {
             // Numeric timestamp
@@ -2504,7 +2685,7 @@ const resolvers = {
           "INSERT INTO absences (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5) RETURNING *",
           [employee_id, name, description, price, formattedDate],
         )
-        console.log("saveddate", formattedDate)
+        //console.log("saveddate", formattedDate)
         // Subtract price from employee's salary
         const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
         if (userResult.rows.length > 0) {
@@ -2623,6 +2804,29 @@ const resolvers = {
       } catch (error) {
         console.error("Error deleting tenue de travail:", error)
         throw new Error("Failed to delete tenue de travail")
+      }
+    },
+    deleteWorkSchedule: async (_: any, { id }: { id: string }) => {
+      try {
+        const result = await pool.query("DELETE FROM work_schedules WHERE id = $1", [id])
+        return result.rowCount > 0
+      } catch (error) {
+        console.error("Error deleting work schedule:", error)
+        throw new Error("Failed to delete work schedule")
+      }
+    },
+    deleteWorkSchedulesByEmployee: async (_: any, { employee_id }: { employee_id: string }) => {
+      try {
+        // Delete from work_schedules where employee_id = selected user and status = manager
+        await pool.query("DELETE FROM work_schedules WHERE employee_id = $1 AND status = 'manager'", [employee_id])
+
+        // Delete from admin_approvals where status = manager (source table cleanup)
+        await pool.query("DELETE FROM admin_approvals WHERE status = 'manager'")
+
+        return true
+      } catch (error) {
+        console.error("Error deleting work schedules:", error)
+        return false
       }
     },
   },

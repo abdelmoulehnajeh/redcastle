@@ -1,3 +1,5 @@
+import { gql } from "@apollo/client"
+
 // Disciplinary Delete Mutations
 export const DELETE_INFRACTION = gql`
   mutation DeleteInfraction($id: ID!) {
@@ -63,7 +65,6 @@ export const CREATE_USER_WORK_SCHEDULE = gql`
     createUserWorkSchedule(employee_id: $employee_id, schedules: $schedules)
   }
 `
-import { gql } from "@apollo/client"
 
 // Authentication
 export const LOGIN_MUTATION = gql`
@@ -205,7 +206,11 @@ export const GET_EMPLOYEE_DETAILS = gql`
      location {
        id
        name
-       address
+     }
+     user {
+       id
+       username
+       password
      }
      profile {
        first_name
@@ -214,11 +219,6 @@ export const GET_EMPLOYEE_DETAILS = gql`
        address
        birth_date
        emergency_contact
-     }
-     user {
-       id
-       username
-       password
      }
    }
    workSchedules(employee_id: $id) {
@@ -718,8 +718,8 @@ query GetWorkSchedulesRange($employee_id: ID!) {
 }
 `
 
-export const GET_WORK_SCHEDULES_MANAGER = gql`
-  query GetWorkSchedulesManager($start: String, $end: String) {
+export const GET_MANAGER_PLANNING_DATA = gql`
+  query GetManagerPlanningData($start: String, $end: String) {
     workSchedulesManager(start: $start, end: $end) {
       id
       employee_id
@@ -731,6 +731,17 @@ export const GET_WORK_SCHEDULES_MANAGER = gql`
       is_working
       is_worked
       location_id
+      status
+      traite
+      employee {
+        id
+        nom
+        prenom
+        profile {
+          first_name
+          last_name
+        }
+      }
       location {
         id
         name
@@ -811,6 +822,20 @@ export const UPDATE_WORK_SCHEDULE = gql`
      }
    }
  }
+`
+
+// New: Delete Work Schedule
+export const DELETE_WORK_SCHEDULE = gql`
+  mutation DeleteWorkSchedule($id: ID!) {
+    deleteWorkSchedule(id: $id)
+  }
+`
+
+// New: Added DELETE_WORK_SCHEDULES_BY_EMPLOYEE mutation for rejecting manager schedules
+export const DELETE_WORK_SCHEDULES_BY_EMPLOYEE = gql`
+  mutation DeleteWorkSchedulesByEmployee($employee_id: ID!) {
+    deleteWorkSchedulesByEmployee(employee_id: $employee_id)
+  }
 `
 
 // Leave requests
@@ -1241,6 +1266,13 @@ export const GET_NOTIFICATIONS = gql`
     }
   }
 `
+
+export const CREATE_NOTIFICATION = gql`
+  mutation CreateNotification($user_id: ID!, $role: String!, $title: String!, $message: String!, $type: String!, $reference_id: String) {
+    createNotification(user_id: $user_id, role: $role, title: $title, message: $message, type: $type, reference_id: $reference_id)
+  }
+`
+
 export const MARK_NOTIFICATION_SEEN = gql`
   mutation MarkNotificationSeen($id: ID!) { markNotificationSeen(id: $id) }
 `
@@ -1473,6 +1505,9 @@ export const GET_WEEKLY_TEMPLATE_SCHEDULES = gql`
       is_working
       location_id
       day
+      retard
+      status
+      created_at
       employee {
         id
         nom
@@ -1482,6 +1517,93 @@ export const GET_WEEKLY_TEMPLATE_SCHEDULES = gql`
         id
         name
         address
+      }
+    }
+  }
+`
+
+// New: Get today's work schedule for pointeuse page
+export const GET_TODAY_WORK_SCHEDULE = gql`
+  query GetTodayWorkSchedule($employee_id: ID!, $date: String!) {
+    todayWorkSchedule(employee_id: $employee_id, date: $date) {
+      id
+      employee_id
+      date
+      start_time
+      end_time
+      shift_type
+      job_position
+      is_working
+      is_worked
+      location_id
+      day
+      retard
+      status
+      traite
+      created_at
+      location {
+        id
+        name
+        address
+      }
+    }
+  }
+`
+
+// New: Get all employees working on a specific date
+export const GET_EMPLOYEES_BY_DATE = gql`
+  query GetEmployeesByDate($date: String!) {
+    employeesByDate(date: $date) {
+      id
+      employee_id
+      date
+      shift_type
+      job_position
+      is_working
+      is_worked
+      start_time
+      end_time
+      created_at
+      day
+      location_id
+      retard
+      status
+      traite
+      employee {
+        id
+        username
+        email
+        nom
+        prenom
+        telephone
+        job_title
+        salaire
+        prime
+        avance
+        infractions
+        absence
+        retard
+        tenu_de_travail
+        status
+        created_at
+        price_j
+        location {
+          id
+          name
+        }
+        user {
+          id
+          username
+          password
+        }
+        profile {
+          first_name
+          last_name
+          phone
+          address
+          birth_date
+          emergency_contact
+        }
       }
     }
   }

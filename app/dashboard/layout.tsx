@@ -263,7 +263,7 @@ function NotificationsProvider({ children }: { children: React.ReactNode }) {
 
     const fetchNotifications = async () => {
       try {
-        console.log("[v0] Fetching notifications for user:", user.id)
+        //console.log("[v0] Fetching notifications for user:", user.id)
         const { data } = await fetchAll({
           variables: {
             user_id: user.id,
@@ -272,10 +272,10 @@ function NotificationsProvider({ children }: { children: React.ReactNode }) {
           },
         })
         const list: Notification[] = data?.notifications ?? []
-        console.log("[v0] Loaded notifications:", list.length)
+        //console.log("[v0] Loaded notifications:", list.length)
         setNotifications(list)
       } catch (error) {
-        console.log("[v0] Error fetching notifications:", error)
+        //console.log("[v0] Error fetching notifications:", error)
       }
     }
 

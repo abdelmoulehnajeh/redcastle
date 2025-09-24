@@ -103,9 +103,9 @@ const translations: Record<Lang, Dict> = {
       { key: "sunday", label: "Dimanche" },
     ],
     shifts: [
-      { value: "Matin", label: "Matin (10:00 - 18:00)" },
-      { value: "Soirée", label: "Soirée (18:00 - 02:00)" },
-      { value: "Doublage", label: "Doublage (10:00 - 02:00)" },
+      { value: "Matin", label: "Matin" }, // Removed hardcoded times from labels
+      { value: "Soirée", label: "Soirée" },
+      { value: "Doublage", label: "Doublage" },
       { value: "Repos", label: "Repos" },
     ],
     dash: "-",
@@ -164,9 +164,9 @@ const translations: Record<Lang, Dict> = {
       { key: "sunday", label: "الأحد" },
     ],
     shifts: [
-      { value: "Matin", label: "صباحي (09:00 - 18:00)" },
-      { value: "Soirée", label: "مسائي (18:00 - 03:00)" },
-      { value: "Doublage", label: "مزدوج (09:00 - 03:00)" },
+      { value: "Matin", label: "صباحي" }, // Removed hardcoded times from labels
+      { value: "Soirée", label: "مسائي" },
+      { value: "Doublage", label: "مزدوج" },
       { value: "Repos", label: "راحة" },
     ],
     dash: "-",
@@ -284,6 +284,44 @@ function getAbbrev(name: string | undefined | null, max = 3) {
   const letters = parts.map((p) => p[0]?.toUpperCase()).join("")
   const abbr = letters || name.slice(0, max).toUpperCase()
   return abbr.slice(0, max)
+}
+
+function getShiftTimes(locationId: string | number, shiftType: string) {
+  const locId = String(locationId)
+
+  if (locId === "1") {
+    switch (shiftType) {
+      case "Matin":
+        return { start_time: "10:00", end_time: "18:00" }
+      case "Doublage":
+        return { start_time: "10:00", end_time: "02:00" }
+      case "Soirée":
+        return { start_time: "18:00", end_time: "02:00" }
+      default:
+        return { start_time: null, end_time: null }
+    }
+  } else if (locId === "2") {
+    switch (shiftType) {
+      case "Matin":
+        return { start_time: "09:00", end_time: "17:00" }
+      case "Doublage":
+        return { start_time: "09:00", end_time: "01:00" }
+      case "Soirée":
+        return { start_time: "17:00", end_time: "01:00" }
+      default:
+        return { start_time: null, end_time: null }
+    }
+  } else if (locId === "3") {
+    switch (shiftType) {
+      case "Matin":
+        return { start_time: "08:00", end_time: "16:00" }
+      default:
+        return { start_time: null, end_time: null }
+    }
+  }
+
+  // Default fallback
+  return { start_time: null, end_time: null }
 }
 
 // Reminder: Backend must use tableName = `${username.toLowerCase()}_id` for per-employee tables.
@@ -562,7 +600,6 @@ export default function JournalPage() {
     setEditingDay(null)
   }
 
-  // Save month plan
   // Save month plan - Updated to use new mutation
   const saveMonth = async () => {
     if (!selectedEmployee) {
@@ -595,29 +632,17 @@ export default function JournalPage() {
         .map(([dateKey, assign]) => {
           const normalized = normalizeDateKey(dateKey)
           if (!normalized) return null
-          let start_time = null
-          let end_time = null
-          let is_working = true
-          if (assign.shift === "Matin") {
-            start_time = "09:00"
-            end_time = "18:00"
-          } else if (assign.shift === "Soirée") {
-            start_time = "18:00"
-            end_time = "03:00"
-          } else if (assign.shift === "Doublage") {
-            start_time = "09:00"
-            end_time = "03:00"
-          } else {
-            start_time = null
-            end_time = null
-            is_working = false
-          }
+
           const finalLocationId =
             assign.shift === "Repos"
               ? "0"
               : assign.location_id && assign.location_id !== "0"
                 ? String(assign.location_id)
                 : String(defaultLocationId)
+
+          const { start_time, end_time } = getShiftTimes(finalLocationId, assign.shift)
+          const is_working = assign.shift !== "Repos"
+
           const dayName = new Date(normalized).toLocaleDateString("en-US", { weekday: "long" })
           return {
             employee_id: String(selectedEmployee),
@@ -720,31 +745,15 @@ export default function JournalPage() {
           const [_, assign] = currentMonthPattern
           const dateStr = ymd(date)
 
-          let start_time = null
-          let end_time = null
-          let is_working = true
-
-          if (assign.shift === "Matin") {
-            start_time = "09:00"
-            end_time = "18:00"
-          } else if (assign.shift === "Soirée") {
-            start_time = "18:00"
-            end_time = "03:00"
-          } else if (assign.shift === "Doublage") {
-            start_time = "09:00"
-            end_time = "03:00"
-          } else {
-            start_time = null
-            end_time = null
-            is_working = false
-          }
-
           const finalLocationId =
             assign.shift === "Repos"
               ? "0"
               : assign.location_id && assign.location_id !== "0"
                 ? String(assign.location_id)
                 : String(defaultLocationId)
+
+          const { start_time, end_time } = getShiftTimes(finalLocationId, assign.shift)
+          const is_working = assign.shift !== "Repos"
 
           const dayName = date.toLocaleDateString("en-US", { weekday: "long" })
 
@@ -840,31 +849,15 @@ export default function JournalPage() {
             const [_, assign] = currentMonthPattern
             const dateStr = ymd(date)
 
-            let start_time = null
-            let end_time = null
-            let is_working = true
-
-            if (assign.shift === "Matin") {
-              start_time = "09:00"
-              end_time = "18:00"
-            } else if (assign.shift === "Soirée") {
-              start_time = "18:00"
-              end_time = "03:00"
-            } else if (assign.shift === "Doublage") {
-              start_time = "09:00"
-              end_time = "03:00"
-            } else {
-              start_time = null
-              end_time = null
-              is_working = false
-            }
-
             const finalLocationId =
               assign.shift === "Repos"
                 ? "0"
                 : assign.location_id && assign.location_id !== "0"
                   ? String(assign.location_id)
                   : String(defaultLocationId)
+
+            const { start_time, end_time } = getShiftTimes(finalLocationId, assign.shift)
+            const is_working = assign.shift !== "Repos"
 
             const dayName = date.toLocaleDateString("en-US", { weekday: "long" })
 
