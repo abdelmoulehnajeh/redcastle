@@ -321,7 +321,7 @@ export default function AdminFinancePage() {
       employee.prenom.toLowerCase().includes(searchTerm.toLowerCase()) ||
       employee.email.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesLocation = locationFilter === "all" || employee.location?.id === locationFilter
-    return matchesSearch && matchesLocation && employee.status === "active"
+    return matchesSearch && matchesLocation 
   })
 
   const calculateNetSalary = (employee: Employee) => {
