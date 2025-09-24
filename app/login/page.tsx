@@ -441,38 +441,7 @@ export default function LoginPage() {
             </form>
 
             {/* Enhanced demo credentials */}
-            <div className="mt-8 p-6 bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-700/50 space-y-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <h3 className="text-sm font-semibold text-slate-200">{t.demoAccounts}</h3>
-              </div>
-
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-xl border border-slate-600/30 hover:border-blue-500/30 transition-all duration-300 group">
-                  <div>
-                    <div className="text-sm font-medium text-blue-300 group-hover:text-blue-200">{t.admin}</div>
-                    <div className="text-xs text-slate-400">{t.adminCreds}</div>
-                  </div>
-                  <Shield className="w-4 h-4 text-blue-400 opacity-50 group-hover:opacity-100 transition-all" />
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-xl border border-slate-600/30 hover:border-purple-500/30 transition-all duration-300 group">
-                  <div>
-                    <div className="text-sm font-medium text-purple-300 group-hover:text-purple-200">{t.manager}</div>
-                    <div className="text-xs text-slate-400">{t.managerCreds}</div>
-                  </div>
-                  <Star className="w-4 h-4 text-purple-400 opacity-50 group-hover:opacity-100 transition-all" />
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-xl border border-slate-600/30 hover:border-green-500/30 transition-all duration-300 group">
-                  <div>
-                    <div className="text-sm font-medium text-green-300 group-hover:text-green-200">{t.employee}</div>
-                    <div className="text-xs text-slate-400">{t.employeeCreds}</div>
-                  </div>
-                  <Zap className="w-4 h-4 text-green-400 opacity-50 group-hover:opacity-100 transition-all" />
-                </div>
-              </div>
-            </div>
+     
 
             {/* Footer info */}
             <div className="text-center pt-4">

@@ -1636,24 +1636,7 @@ export default function AdminApprovalsPage() {
         </Dialog>
       ))}
 
-      <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl">
-        <div className="flex items-center justify-between mb-2">
-          <Button
-            onClick={() => handleOpenPlanningManager()}
-            variant="secondary"
-            size="sm"
-            className="glass-card bg-gradient-to-br from-emerald-800/80 to-green-900/80 border border-white/10 text-white hover:bg-white/30"
-            disabled={loadingPlanning}
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            <span dir="auto">Voir le Planning Manager</span>
-          </Button>
-        </div>
-
-        <div className="text-xs text-slate-300 p-2 bg-slate-800/50 rounded border border-white/10">
-          Cliquez sur "Voir le Planning Manager" pour consulter et modifier le planning proposé
-        </div>
-      </div>
+  
     </div>
   )
 }
