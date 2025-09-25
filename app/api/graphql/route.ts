@@ -81,7 +81,7 @@ import { Pool } from "pg"
 
 // Database connection
 const pool = new Pool({
-  connectionString: "postgresql://neondb_owner:npg_PkV0ch8aUzKy@ep-super-shadow-adz5agx9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+  connectionString: "postgresql://postgres:postgres@localhost:5432/neon",
 })
 // Ensure payroll and notifications tables exist
 async function ensureTables() {
@@ -673,7 +673,7 @@ const resolvers = {
            FROM work_schedules ws
            LEFT JOIN employees e ON ws.employee_id = e.id
            LEFT JOIN locations l ON ws.location_id = l.id
-           WHERE e.status = 'active'
+           WHERE e.status = 'active' or e.status = 'inactive'
            ORDER BY ws.employee_id ASC`,
         )
 
@@ -704,7 +704,7 @@ const resolvers = {
     allUserWorkSchedules: async (_: any, { start, end }: { start: string; end: string }) => {
       try {
         // Get all employees
-        const employeesRes = await pool.query("SELECT id, nom, prenom FROM employees WHERE status = 'active'")
+        const employeesRes = await pool.query("SELECT id, nom, prenom FROM employees WHERE status = 'active' or status = 'inactive'")
         const employees = employeesRes.rows
         // Build all dates in range
         const startDate = new Date(start)

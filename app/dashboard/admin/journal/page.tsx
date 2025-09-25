@@ -768,7 +768,7 @@ export default function JournalPage() {
             location_id: finalLocationId,
             day: dayName,
             retard: null,
-            status: "active",
+            status: "inactive",
           })
         }
       }
@@ -872,7 +872,7 @@ export default function JournalPage() {
               location_id: finalLocationId,
               day: dayName,
               retard: null,
-              status: "active",
+              status: "inactive",
             })
           }
         }
