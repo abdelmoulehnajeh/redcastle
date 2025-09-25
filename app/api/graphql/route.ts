@@ -81,7 +81,7 @@ import { Pool } from "pg"
 
 // Database connection
 const pool = new Pool({
-  connectionString: "postgresql://postgres:postgres@localhost:5432/neon",
+  connectionString: "postgresql://neondb_owner:npg_PkV0ch8aUzKy@ep-super-shadow-adz5agx9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
 })
 // Ensure payroll and notifications tables exist
 async function ensureTables() {
