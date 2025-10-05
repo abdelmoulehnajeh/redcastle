@@ -18,6 +18,26 @@ import {
   UPDATE_WORK_SCHEDULE,
   DELETE_WORK_SCHEDULE, // Added DELETE_WORK_SCHEDULE mutation
   DELETE_WORK_SCHEDULES_BY_EMPLOYEE, // Added DELETE_WORK_SCHEDULES_BY_EMPLOYEE mutation
+  APPROVE_EMPLOYEE_UPDATE,
+  REJECT_EMPLOYEE_UPDATE,
+  APPROVE_INFRACTION_CREATE,
+  REJECT_INFRACTION_CREATE,
+  APPROVE_ABSENCE_CREATE,
+  REJECT_ABSENCE_CREATE,
+  APPROVE_RETARD_CREATE,
+  REJECT_RETARD_CREATE,
+  APPROVE_TENUE_CREATE,
+  REJECT_TENUE_CREATE,
+  APPROVE_INFRACTION_DELETE,
+  REJECT_INFRACTION_DELETE,
+  APPROVE_ABSENCE_DELETE,
+  REJECT_ABSENCE_DELETE,
+  APPROVE_RETARD_DELETE,
+  REJECT_RETARD_DELETE,
+  APPROVE_TENUE_DELETE,
+  REJECT_TENUE_DELETE,
+  APPROVE_ROLE_UPDATE,
+  REJECT_ROLE_UPDATE,
 } from "@/lib/graphql-queries"
 import { toast } from "sonner"
 import {
@@ -489,6 +509,27 @@ export default function AdminApprovalsPage() {
   const [deleteWorkSchedule] = useMutation(DELETE_WORK_SCHEDULE) // Added DELETE_WORK_SCHEDULE mutation
   const [deleteWorkSchedulesByEmployee] = useMutation(DELETE_WORK_SCHEDULES_BY_EMPLOYEE) // Added DELETE_WORK_SCHEDULES_BY_EMPLOYEE mutation
 
+  const [approveEmployeeUpdate, { loading: approvingEmployeeUpdate }] = useMutation(APPROVE_EMPLOYEE_UPDATE)
+  const [rejectEmployeeUpdate, { loading: rejectingEmployeeUpdate }] = useMutation(REJECT_EMPLOYEE_UPDATE)
+  const [approveInfractionCreate] = useMutation(APPROVE_INFRACTION_CREATE)
+  const [rejectInfractionCreate] = useMutation(REJECT_INFRACTION_CREATE)
+  const [approveAbsenceCreate] = useMutation(APPROVE_ABSENCE_CREATE)
+  const [rejectAbsenceCreate] = useMutation(REJECT_ABSENCE_CREATE)
+  const [approveRetardCreate] = useMutation(APPROVE_RETARD_CREATE)
+  const [rejectRetardCreate] = useMutation(REJECT_RETARD_CREATE)
+  const [approveTenueCreate] = useMutation(APPROVE_TENUE_CREATE)
+  const [rejectTenueCreate] = useMutation(REJECT_TENUE_CREATE)
+  const [approveInfractionDelete] = useMutation(APPROVE_INFRACTION_DELETE)
+  const [rejectInfractionDelete] = useMutation(REJECT_INFRACTION_DELETE)
+  const [approveAbsenceDelete] = useMutation(APPROVE_ABSENCE_DELETE)
+  const [rejectAbsenceDelete] = useMutation(REJECT_ABSENCE_DELETE)
+  const [approveRetardDelete] = useMutation(APPROVE_RETARD_DELETE)
+  const [rejectRetardDelete] = useMutation(REJECT_RETARD_DELETE)
+  const [approveTenueDelete] = useMutation(APPROVE_TENUE_DELETE)
+  const [rejectTenueDelete] = useMutation(REJECT_TENUE_DELETE)
+  const [approveRoleUpdate] = useMutation(APPROVE_ROLE_UPDATE)
+  const [rejectRoleUpdate] = useMutation(REJECT_ROLE_UPDATE)
+
   const adminApprovals: AdminApproval[] = adminApprovalsData?.adminApprovals || []
   const leaveRequests: LeaveRequest[] = leaveRequestsData?.leaveRequests || []
 
@@ -580,45 +621,71 @@ export default function AdminApprovalsPage() {
         parsedData = {}
       }
 
-      if (status === "approved") {
-        // This part is now handled by the frontend logic below, not a direct SQL query.
-        // The original logic for updating work schedules to 'confirmed' is preserved.
-        if (parsedData.employee_id) {
-          const { data: scheduleData } = await getWorkSchedulesRange({
-            variables: { employee_id: parsedData.employee_id },
-            fetchPolicy: "network-only",
-          })
+      const approvalHandlers: Record<string, { approve: any; reject: any }> = {
+        employee_update: { approve: approveEmployeeUpdate, reject: rejectEmployeeUpdate },
+        infraction_create: { approve: approveInfractionCreate, reject: rejectInfractionCreate },
+        absence_create: { approve: approveAbsenceCreate, reject: rejectAbsenceCreate },
+        retard_create: { approve: approveRetardCreate, reject: rejectRetardCreate },
+        tenue_create: { approve: approveTenueCreate, reject: rejectTenueCreate },
+        infraction_delete: { approve: approveInfractionDelete, reject: rejectInfractionDelete },
+        absence_delete: { approve: approveAbsenceDelete, reject: rejectAbsenceDelete },
+        retard_delete: { approve: approveRetardDelete, reject: rejectRetardDelete },
+        tenue_delete: { approve: approveTenueDelete, reject: rejectTenueDelete },
+        role_update: { approve: approveRoleUpdate, reject: rejectRoleUpdate },
+      }
 
-          const managerSchedules = scheduleData?.workSchedulesRange?.filter((s: any) => s.status === "manager") || []
+      const handler = approvalHandlers[approval.type]
 
-          for (const schedule of managerSchedules) {
-            await updateWorkSchedule({
+      if (handler) {
+        if (status === "approved") {
+          await handler.approve({ variables: { approval_id: approvalId } })
+          toast.success("Demande approuvée", { description: t.decisionSaved })
+        } else {
+          await handler.reject({ variables: { approval_id: approvalId, comment: comments[approvalId] || "" } })
+          toast.success("Demande rejetée", { description: t.decisionSaved })
+        }
+      } else if (approval.type === "schedule_change") {
+        // Handle schedule change approval (existing logic)
+        if (status === "approved") {
+          // This part is now handled by the frontend logic below, not a direct SQL query.
+          // The original logic for updating work schedules to 'confirmed' is preserved.
+          if (parsedData.employee_id) {
+            const { data: scheduleData } = await getWorkSchedulesRange({
+              variables: { employee_id: parsedData.employee_id },
+              fetchPolicy: "network-only",
+            })
+
+            const managerSchedules = scheduleData?.workSchedulesRange?.filter((s: any) => s.status === "manager") || []
+
+            for (const schedule of managerSchedules) {
+              await updateWorkSchedule({
+                variables: {
+                  id: schedule.id,
+                  status: "confirmed",
+                },
+              })
+            }
+          }
+
+          // This logic is now handled by the approveScheduleChange mutation itself,
+          // assuming the mutation updates the admin_approvals table.
+          // If not, a separate mutation or direct update would be needed.
+
+          await approveScheduleChange({ variables: { approval_id: approvalId } })
+          toast.success(t.scheduleApproved, { description: t.decisionSaved })
+        } else {
+          // Also DELETE from source table WHERE status = manager
+          if (parsedData.employee_id) {
+            await deleteWorkSchedulesByEmployee({
               variables: {
-                id: schedule.id,
-                status: "confirmed",
+                employee_id: parsedData.employee_id,
               },
             })
           }
+
+          await rejectScheduleChange({ variables: { approval_id: approvalId, comment: comments[approvalId] || "" } })
+          toast.success(t.scheduleRejected, { description: t.decisionSaved })
         }
-
-        // This logic is now handled by the approveScheduleChange mutation itself,
-        // assuming the mutation updates the admin_approvals table.
-        // If not, a separate mutation or direct update would be needed.
-
-        await approveScheduleChange({ variables: { approval_id: approvalId } })
-        toast.success(t.scheduleApproved, { description: t.decisionSaved })
-      } else {
-        // Also DELETE from source table WHERE status = manager
-        if (parsedData.employee_id) {
-          await deleteWorkSchedulesByEmployee({
-            variables: {
-              employee_id: parsedData.employee_id,
-            },
-          })
-        }
-
-        await rejectScheduleChange({ variables: { approval_id: approvalId, comment: comments[approvalId] || "" } })
-        toast.success(t.scheduleRejected, { description: t.decisionSaved })
       }
 
       setComments((prev) => ({ ...prev, [approvalId]: "" }))
@@ -1067,7 +1134,9 @@ export default function AdminApprovalsPage() {
                     t={translations[lang]}
                     onApprove={() => handleApprovalDecision(notif.id, "approved")}
                     onReject={() => handleApprovalDecision(notif.id, "rejected")}
-                    loadingAction={approvingSchedule || rejectingSchedule}
+                    loadingAction={
+                      approvingSchedule || rejectingSchedule || approvingEmployeeUpdate || rejectingEmployeeUpdate
+                    }
                     onOpenPlanner={openNotificationPlanner}
                     loadingPlanning={loadingPlanning}
                     onOpenModificationPlanner={openModificationPlanner} // Added modification planner prop
@@ -1602,7 +1671,9 @@ export default function AdminApprovalsPage() {
                         closeNotificationPlanner(notif.id)
                       }}
                       className="bg-green-600 hover:bg-green-700 text-white shadow-md glass-card flex-1 sm:flex-none"
-                      disabled={approvingSchedule || rejectingSchedule}
+                      disabled={
+                        approvingSchedule || rejectingSchedule || approvingEmployeeUpdate || rejectingEmployeeUpdate
+                      }
                     >
                       <CheckCircle className="w-4 h-4 mr-2" />
                       <span dir="auto">Approuver</span>
@@ -1613,8 +1684,10 @@ export default function AdminApprovalsPage() {
                         closeNotificationPlanner(notif.id)
                       }}
                       variant="destructive"
-                      className="shadow-md glass-card flex-1 sm:flex-none"
-                      disabled={approvingSchedule || rejectingSchedule}
+                      className="shadow-md flex-1 sm:flex-none glass-card"
+                      disabled={
+                        approvingSchedule || rejectingSchedule || approvingEmployeeUpdate || rejectingEmployeeUpdate
+                      }
                     >
                       <XCircle className="w-4 h-4 mr-2" />
                       <span dir="auto">Rejeter</span>
@@ -1635,8 +1708,6 @@ export default function AdminApprovalsPage() {
           </DialogContent>
         </Dialog>
       ))}
-
-  
     </div>
   )
 }
@@ -1711,7 +1782,7 @@ function ApprovalCard({
   loadingAction,
   onOpenPlanner,
   loadingPlanning,
-  onOpenModificationPlanner, // Added onOpenModificationPlanner prop
+  onOpenModificationPlanner,
 }: {
   notification: AdminApproval
   comment: string
@@ -1723,7 +1794,7 @@ function ApprovalCard({
   loadingAction: boolean
   onOpenPlanner: (notificationId: string, notificationData: string) => void
   loadingPlanning: boolean
-  onOpenModificationPlanner: (notificationId: string, notificationData: string) => void // Added prop type
+  onOpenModificationPlanner: (notificationId: string, notificationData: string) => void
 }) {
   const statusClass =
     notification.status === "pending"
@@ -1737,6 +1808,179 @@ function ApprovalCard({
       : notification.status === "approved"
         ? t.statusApproved
         : t.statusRejected
+
+  let parsedData: any = {}
+  try {
+    parsedData = JSON.parse(notification.data)
+  } catch (e) {
+    console.error("Error parsing notification data:", e)
+  }
+
+  const isEmployeeUpdate = notification.type === "employee_update"
+  const isScheduleChange = notification.type === "schedule_change"
+
+  const renderApprovalContent = () => {
+    switch (notification.type) {
+      case "employee_update":
+        return (
+          <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl space-y-3">
+            <div className="text-sm text-slate-200">
+              <p className="font-semibold mb-2">Employé: {parsedData.employee_name || "N/A"}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {parsedData.old_values && parsedData.new_values && (
+                  <>
+                    {/* Personal Info Changes */}
+                    {Object.keys(parsedData.new_values.personal || {}).map((key) => {
+                      const oldVal = parsedData.old_values.personal?.[key]
+                      const newVal = parsedData.new_values.personal?.[key]
+                      if (oldVal !== newVal) {
+                        return (
+                          <div key={key} className="p-2 bg-slate-800/50 rounded border border-white/10">
+                            <p className="text-xs text-slate-400 capitalize">{key.replace("_", " ")}</p>
+                            <p className="text-xs text-red-300 line-through">{String(oldVal)}</p>
+                            <p className="text-xs text-green-300">→ {String(newVal)}</p>
+                          </div>
+                        )
+                      }
+                      return null
+                    })}
+
+                    {/* Financial Info Changes */}
+                    {Object.keys(parsedData.new_values.financial || {}).map((key) => {
+                      const oldVal = parsedData.old_values.financial?.[key]
+                      const newVal = parsedData.new_values.financial?.[key]
+                      if (oldVal !== newVal) {
+                        return (
+                          <div key={key} className="p-2 bg-slate-800/50 rounded border border-white/10">
+                            <p className="text-xs text-slate-400 capitalize">{key.replace("_", " ")}</p>
+                            <p className="text-xs text-red-300 line-through">{String(oldVal)}</p>
+                            <p className="text-xs text-green-300">→ {String(newVal)}</p>
+                          </div>
+                        )
+                      }
+                      return null
+                    })}
+
+                    {/* User Info Changes */}
+                    {Object.keys(parsedData.new_values.userInfo || {}).map((key) => {
+                      const oldVal = parsedData.old_values.userInfo?.[key]
+                      const newVal = parsedData.new_values.userInfo?.[key]
+                      if (oldVal !== newVal && key !== "password") {
+                        return (
+                          <div key={key} className="p-2 bg-slate-800/50 rounded border border-white/10">
+                            <p className="text-xs text-slate-400 capitalize">{key.replace("_", " ")}</p>
+                            <p className="text-xs text-red-300 line-through">{String(oldVal)}</p>
+                            <p className="text-xs text-green-300">→ {String(newVal)}</p>
+                          </div>
+                        )
+                      }
+                      if (key === "password" && newVal) {
+                        return (
+                          <div key={key} className="p-2 bg-slate-800/50 rounded border border-white/10">
+                            <p className="text-xs text-slate-400">Mot de passe</p>
+                            <p className="text-xs text-green-300">→ Nouveau mot de passe défini</p>
+                          </div>
+                        )
+                      }
+                      return null
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+
+      case "infraction_create":
+      case "absence_create":
+      case "retard_create":
+      case "tenue_create":
+        return (
+          <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl space-y-2">
+            <p className="text-sm text-slate-200">
+              <strong>Nom:</strong> {parsedData.name}
+            </p>
+            {parsedData.description && (
+              <p className="text-sm text-slate-200">
+                <strong>Description:</strong> {parsedData.description}
+              </p>
+            )}
+            <p className="text-sm text-slate-200">
+              <strong>Prix:</strong> {parsedData.price} DT
+            </p>
+            {parsedData.dat && (
+              <p className="text-sm text-slate-200">
+                <strong>Date:</strong> {parsedData.dat}
+              </p>
+            )}
+          </div>
+        )
+
+      case "infraction_delete":
+      case "absence_delete":
+      case "retard_delete":
+      case "tenue_delete":
+        const item = parsedData.infraction || parsedData.absence || parsedData.retard || parsedData.tenue
+        return (
+          <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl space-y-2">
+            <p className="text-sm text-slate-200">
+              <strong>Suppression demandée</strong>
+            </p>
+            {item && (
+              <>
+                <p className="text-sm text-slate-200">
+                  <strong>Nom:</strong> {item.name}
+                </p>
+                {item.description && (
+                  <p className="text-sm text-slate-200">
+                    <strong>Description:</strong> {item.description}
+                  </p>
+                )}
+                <p className="text-sm text-slate-200">
+                  <strong>Prix:</strong> {item.price} DT
+                </p>
+              </>
+            )}
+          </div>
+        )
+
+      case "role_update":
+        return (
+          <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl space-y-2">
+            <p className="text-sm text-slate-200">
+              <strong>Utilisateur ID:</strong> {parsedData.user_id}
+            </p>
+            <p className="text-sm text-red-300 line-through">{parsedData.old_role}</p>
+            <p className="text-sm text-green-300">→ {parsedData.new_role}</p>
+          </div>
+        )
+
+      case "schedule_change":
+        return (
+          <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl">
+            <div className="flex items-center justify-center mb-2">
+              <Button
+                onClick={() => onOpenPlanner(notification.id, notification.data)}
+                variant="secondary"
+                size="sm"
+                className="glass-card bg-gradient-to-br from-emerald-800/80 to-green-900/80 border border-white/10 text-white hover:bg-white/30 w-full sm:w-auto"
+                disabled={loadingPlanning}
+              >
+                <Calendar className="w-4 h-4 mr-2" />
+                <span dir="auto">Voir le Planning Manager</span>
+              </Button>
+            </div>
+
+            <div className="text-xs text-slate-300 p-2 bg-slate-800/50 rounded border border-white/10 text-center">
+              Cliquez pour consulter le planning et prendre une décision
+            </div>
+          </div>
+        )
+
+      default:
+        return null
+    }
+  }
 
   return (
     <div className="border border-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 glass-card bg-gradient-to-br from-slate-800/70 to-indigo-900/70 shadow-sm hover:shadow-md transition-all duration-200">
@@ -1765,24 +2009,38 @@ function ApprovalCard({
         </div>
       </div>
 
-      <div className="p-3 sm:p-4 glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 rounded-lg sm:rounded-xl">
-        <div className="flex items-center justify-center mb-2">
-          <Button
-            onClick={() => onOpenPlanner(notification.id, notification.data)}
-            variant="secondary"
-            size="sm"
-            className="glass-card bg-gradient-to-br from-emerald-800/80 to-green-900/80 border border-white/10 text-white hover:bg-white/30 w-full sm:w-auto"
-            disabled={loadingPlanning}
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            <span dir="auto">Voir le Planning Manager</span>
-          </Button>
-        </div>
+      {renderApprovalContent()}
 
-        <div className="text-xs text-slate-300 p-2 bg-slate-800/50 rounded border border-white/10 text-center">
-          Cliquez pour consulter le planning et prendre une décision
+      {notification.status === "pending" && (
+        <div className="space-y-3">
+          <Textarea
+            placeholder={t.adminCommentPlaceholder}
+            value={comment}
+            onChange={(e) => onCommentChange(e.target.value)}
+            rows={2}
+            className="glass-card bg-gradient-to-br from-slate-900/80 to-indigo-900/80 border border-white/10 text-white text-sm"
+          />
+          <div className="flex space-x-3">
+            <Button
+              onClick={onApprove}
+              disabled={loadingAction}
+              className="bg-green-700 hover:bg-green-800 text-white shadow-md flex-1 md:flex-none glass-card border border-white/10"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              <span dir="auto">{loadingAction ? t.loadingLabel : t.approveBtn}</span>
+            </Button>
+            <Button
+              onClick={onReject}
+              disabled={loadingAction}
+              variant="destructive"
+              className="shadow-md flex-1 md:flex-none glass-card border border-white/10"
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              <span dir="auto">{t.rejectBtn}</span>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

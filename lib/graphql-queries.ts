@@ -1194,34 +1194,6 @@ export const SEND_APPROVAL_REQUEST = gql`
     )
   }
 `
-
-export const APPROVE_SCHEDULE_CHANGE = gql`
- mutation ApproveScheduleChange($approval_id: ID!) {
-   approveScheduleChange(approval_id: $approval_id)
- }
-`
-
-export const REJECT_SCHEDULE_CHANGE = gql`
- mutation RejectScheduleChange($approval_id: ID!, $comment: String) {
-   rejectScheduleChange(approval_id: $approval_id, comment: $comment)
- }
-`
-
-// Payroll payments
-export const GET_PAYROLL_PAYMENTS = gql`
- query GetPayrollPayments($period: String!) {
-   payrollPayments(period: $period) {
-     id
-     employee_id
-     period
-     paid
-     paid_at
-     amount
-     hours_worked
-   }
- }
-`
-
 export const GET_PAYROLL_PAYMENT = gql`
  query GetPayrollPayment($employee_id: ID!, $period: String!) {
    payrollPayment(employee_id: $employee_id, period: $period) {
@@ -1236,6 +1208,21 @@ export const GET_PAYROLL_PAYMENT = gql`
  }
 `
 
+// Fetch all payroll payments for a given period (used by admin finance page)
+export const GET_PAYROLL_PAYMENTS = gql`
+  query GetPayrollPayments($period: String!) {
+    payrollPayments(period: $period) {
+      id
+      employee_id
+      period
+      paid
+      paid_at
+      amount
+      hours_worked
+    }
+  }
+`
+
 export const PAY_SALARY = gql`
  mutation PaySalary($employee_id: ID!, $period: String!) {
    paySalary(employee_id: $employee_id, period: $period) {
@@ -1248,6 +1235,139 @@ export const PAY_SALARY = gql`
      hours_worked
    }
  }
+`
+
+export const APPROVE_SCHEDULE_CHANGE = gql`
+ mutation ApproveScheduleChange($approval_id: ID!) {
+   approveScheduleChange(approval_id: $approval_id)
+ }
+`
+
+export const REJECT_SCHEDULE_CHANGE = gql`
+ mutation RejectScheduleChange($approval_id: ID!, $comment: String) {
+   rejectScheduleChange(approval_id: $approval_id, comment: $comment)
+ }
+`
+
+// New: Added mutations for employee update approvals
+export const APPROVE_EMPLOYEE_UPDATE = gql`
+  mutation ApproveEmployeeUpdate($approval_id: ID!) {
+    approveEmployeeUpdate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_EMPLOYEE_UPDATE = gql`
+  mutation RejectEmployeeUpdate($approval_id: ID!, $comment: String) {
+    rejectEmployeeUpdate(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_INFRACTION_CREATE = gql`
+  mutation ApproveInfractionCreate($approval_id: ID!) {
+    approveInfractionCreate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_INFRACTION_CREATE = gql`
+  mutation RejectInfractionCreate($approval_id: ID!, $comment: String) {
+    rejectInfractionCreate(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_ABSENCE_CREATE = gql`
+  mutation ApproveAbsenceCreate($approval_id: ID!) {
+    approveAbsenceCreate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_ABSENCE_CREATE = gql`
+  mutation RejectAbsenceCreate($approval_id: ID!, $comment: String) {
+    rejectAbsenceCreate(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_RETARD_CREATE = gql`
+  mutation ApproveRetardCreate($approval_id: ID!) {
+    approveRetardCreate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_RETARD_CREATE = gql`
+  mutation RejectRetardCreate($approval_id: ID!, $comment: String) {
+    rejectRetardCreate(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_TENUE_CREATE = gql`
+  mutation ApproveTenueCreate($approval_id: ID!) {
+    approveTenueCreate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_TENUE_CREATE = gql`
+  mutation RejectTenueCreate($approval_id: ID!, $comment: String) {
+    rejectTenueCreate(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_INFRACTION_DELETE = gql`
+  mutation ApproveInfractionDelete($approval_id: ID!) {
+    approveInfractionDelete(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_INFRACTION_DELETE = gql`
+  mutation RejectInfractionDelete($approval_id: ID!, $comment: String) {
+    rejectInfractionDelete(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_ABSENCE_DELETE = gql`
+  mutation ApproveAbsenceDelete($approval_id: ID!) {
+    approveAbsenceDelete(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_ABSENCE_DELETE = gql`
+  mutation RejectAbsenceDelete($approval_id: ID!, $comment: String) {
+    rejectAbsenceDelete(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_RETARD_DELETE = gql`
+  mutation ApproveRetardDelete($approval_id: ID!) {
+    approveRetardDelete(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_RETARD_DELETE = gql`
+  mutation RejectRetardDelete($approval_id: ID!, $comment: String) {
+    rejectRetardDelete(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_TENUE_DELETE = gql`
+  mutation ApproveTenueDelete($approval_id: ID!) {
+    approveTenueDelete(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_TENUE_DELETE = gql`
+  mutation RejectTenueDelete($approval_id: ID!, $comment: String) {
+    rejectTenueDelete(approval_id: $approval_id, comment: $comment)
+  }
+`
+
+export const APPROVE_ROLE_UPDATE = gql`
+  mutation ApproveRoleUpdate($approval_id: ID!) {
+    approveRoleUpdate(approval_id: $approval_id)
+  }
+`
+
+export const REJECT_ROLE_UPDATE = gql`
+  mutation RejectRoleUpdate($approval_id: ID!, $comment: String) {
+    rejectRoleUpdate(approval_id: $approval_id, comment: $comment)
+  }
 `
 
 // Notifications (from earlier feature)
@@ -1606,5 +1726,194 @@ export const GET_EMPLOYEES_BY_DATE = gql`
         }
       }
     }
+  }
+`
+
+// Manager-specific mutations that create approval requests instead of direct updates
+export const MANAGER_REQUEST_EMPLOYEE_UPDATE = gql`
+  mutation ManagerRequestEmployeeUpdate(
+    $employee_id: ID!
+    $manager_id: ID!
+    $old_values: String!
+    $new_values: String!
+    $month: String!
+  ) {
+    managerRequestEmployeeUpdate(
+      employee_id: $employee_id
+      manager_id: $manager_id
+      old_values: $old_values
+      new_values: $new_values
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_CREATE_INFRACTION = gql`
+  mutation ManagerRequestCreateInfraction(
+    $employee_id: ID!
+    $manager_id: ID!
+    $name: String!
+    $description: String
+    $price: Float!
+    $dat: String
+    $month: String!
+  ) {
+    managerRequestCreateInfraction(
+      employee_id: $employee_id
+      manager_id: $manager_id
+      name: $name
+      description: $description
+      price: $price
+      dat: $dat
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_CREATE_ABSENCE = gql`
+  mutation ManagerRequestCreateAbsence(
+    $employee_id: ID!
+    $manager_id: ID!
+    $name: String!
+    $description: String
+    $price: Float!
+    $dat: String
+    $month: String!
+  ) {
+    managerRequestCreateAbsence(
+      employee_id: $employee_id
+      manager_id: $manager_id
+      name: $name
+      description: $description
+      price: $price
+      dat: $dat
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_CREATE_RETARD = gql`
+  mutation ManagerRequestCreateRetard(
+    $employee_id: ID!
+    $manager_id: ID!
+    $name: String!
+    $description: String
+    $price: Float!
+    $dat: String
+    $month: String!
+  ) {
+    managerRequestCreateRetard(
+      employee_id: $employee_id
+      manager_id: $manager_id
+      name: $name
+      description: $description
+      price: $price
+      dat: $dat
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_CREATE_TENUE = gql`
+  mutation ManagerRequestCreateTenue(
+    $employee_id: ID!
+    $manager_id: ID!
+    $name: String!
+    $description: String
+    $price: Float!
+    $month: String!
+  ) {
+    managerRequestCreateTenue(
+      employee_id: $employee_id
+      manager_id: $manager_id
+      name: $name
+      description: $description
+      price: $price
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_DELETE_INFRACTION = gql`
+  mutation ManagerRequestDeleteInfraction(
+    $infraction_id: ID!
+    $employee_id: ID!
+    $manager_id: ID!
+    $month: String!
+  ) {
+    managerRequestDeleteInfraction(
+      infraction_id: $infraction_id
+      employee_id: $employee_id
+      manager_id: $manager_id
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_DELETE_ABSENCE = gql`
+  mutation ManagerRequestDeleteAbsence(
+    $absence_id: ID!
+    $employee_id: ID!
+    $manager_id: ID!
+    $month: String!
+  ) {
+    managerRequestDeleteAbsence(
+      absence_id: $absence_id
+      employee_id: $employee_id
+      manager_id: $manager_id
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_DELETE_RETARD = gql`
+  mutation ManagerRequestDeleteRetard(
+    $retard_id: ID!
+    $employee_id: ID!
+    $manager_id: ID!
+    $month: String!
+  ) {
+    managerRequestDeleteRetard(
+      retard_id: $retard_id
+      employee_id: $employee_id
+      manager_id: $manager_id
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_DELETE_TENUE = gql`
+  mutation ManagerRequestDeleteTenue(
+    $tenue_id: ID!
+    $employee_id: ID!
+    $manager_id: ID!
+    $month: String!
+  ) {
+    managerRequestDeleteTenue(
+      tenue_id: $tenue_id
+      employee_id: $employee_id
+      manager_id: $manager_id
+      month: $month
+    )
+  }
+`
+
+export const MANAGER_REQUEST_UPDATE_ROLE = gql`
+  mutation ManagerRequestUpdateRole(
+    $user_id: ID!
+    $employee_id: ID!
+    $manager_id: ID!
+    $old_role: String!
+    $new_role: String!
+    $month: String!
+  ) {
+    managerRequestUpdateRole(
+      user_id: $user_id
+      employee_id: $employee_id
+      manager_id: $manager_id
+      old_role: $old_role
+      new_role: $new_role
+      month: $month
+    )
   }
 `

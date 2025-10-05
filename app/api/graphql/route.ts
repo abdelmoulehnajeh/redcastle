@@ -76,7 +76,6 @@ async function getUserTableName(employeeId) {
 }
 import { ApolloServer } from "@apollo/server"
 import { startServerAndCreateNextHandler } from "@as-integrations/next"
-import { gql } from "graphql-tag"
 import { Pool } from "pg"
 
 // Database connection
@@ -117,6 +116,30 @@ async function ensureTables() {
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, seen, created_at DESC);`,
     )
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS recent_activities (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      type TEXT NOT NULL,
+      urgent BOOLEAN DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `)
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_approvals (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      reference_id TEXT,
+      manager_id INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMP,
+      admin_comment TEXT
+    );
+  `)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_approvals_status ON admin_approvals (status);`)
   } catch (e) {
     console.error("Failed to ensure tables:", e)
   }
@@ -225,27 +248,240 @@ function firstAndLastDateOfMonth(ym: string): { start: string; end: string } {
 }
 
 // Extend schema minimally: add notifyPlanningForEmployee mutation
-const typeDefs = gql`
+const typeDefs = `
 type Mutation {
-  # ...existing mutation definitions...
-  createOrUpdateManyUserWorkSchedules(users: [UserSchedulesInput!]!): Boolean!
-  updateUserRole(user_id: ID!, role: String!): User
+  login(username: String!, password: String!): User
+  createUser(username: String!, password: String!, role: String!, employee_id: ID): User!
+  createEmployee(
+    username: String!
+    email: String!
+    nom: String!
+    prenom: String!
+    telephone: String
+    job_title: String!
+    salaire: Float
+    role: String
+    location_id: ID
+  ): Employee!
+  updateEmployee(
+    id: ID!
+    salaire: Float
+    prime: Float
+    avance: Float
+    infractions: Int
+    absence: Int
+    retard: Int
+    tenu_de_travail: Int
+    status: String
+    price_j: Float
+  ): Employee!
+  deleteEmployee(id: ID!): Boolean!
+  createLocation(name: String!, address: String, phone: String, manager_id: ID): Location!
+  updateLocation(id: ID!, name: String, address: String, phone: String, manager_id: ID): Location!
+  deleteLocation(id: ID!): Boolean!
+  createWorkSchedule(
+    employee_id: ID!
+    date: String!
+    start_time: String
+    end_time: String
+    shift_type: String!
+    job_position: String!
+    is_working: Boolean!
+    location_id: ID!
+  ): WorkSchedule!
+  updateWorkSchedule(
+    id: ID!
+    employee_id: ID!
+    date: String!
+    start_time: String
+    end_time: String
+    shift_type: String
+    job_position: String
+    is_working: Boolean
+    location_id: ID
+  ): WorkSchedule!
+  deleteWorkSchedule(id: ID!): Boolean!
+  deleteWorkSchedulesByEmployee(employee_id: ID!): Boolean!
+  createLeaveRequest(
+    employee_id: ID!
+    type: String!
+    start_date: String!
+    end_date: String!
+    reason: String
+  ): LeaveRequest!
+  approveLeaveRequest(id: ID!, status: String!, comment: String): LeaveRequest!
+  createContract(
+    employee_id: ID!
+    contract_type: String!
+    start_date: String!
+    end_date: String
+    salary: Float!
+    tenu_count: Int
+    documents: [String]
+  ): Contract!
+  clockIn(employeeId: ID!, locationId: ID!): TimeEntry!
+  clockOut(timeEntryId: ID!): TimeEntry!
+  paySalary(employee_id: ID!, period: String!): PayrollPayment!
+  createUserWorkSchedule(employee_id: ID!, schedules: [WorkScheduleInput!]!): Boolean!
+  createOrUpdateManyUserWorkSchedules(users: [UserWorkScheduleInput!]!): Boolean!
+  createManagerWorkSchedule(employee_id: ID!, schedules: [WorkScheduleInput!]!): [WorkSchedule!]!
+  sendApprovalRequest(
+    type: String!
+    reference_id: ID
+    manager_id: ID!
+    employee_id: ID!
+    data: String!
+    month: String!
+  ): Boolean!
+  approveScheduleChange(approval_id: ID!): Boolean!
+  rejectScheduleChange(approval_id: ID!, comment: String): Boolean!
+  approveManagerSchedule(approval_id: ID!): Boolean!
+  rejectManagerSchedule(approval_id: ID!, comment: String): Boolean!
   createNotification(
     user_id: ID!
     role: String!
     title: String!
-    message: String
+    message: String!
     type: String!
     reference_id: String
-    data: String
   ): Boolean!
-  deleteWorkSchedule(id: ID!): Boolean!
+  markNotificationSeen(id: ID!): Boolean!
+  markAllNotificationsSeen(user_id: ID!): Boolean!
+  notifyPlanningForEmployee(employee_id: ID!, month: String!): Boolean!
+  updateEmployeeProfile(
+    id: ID!
+    nom: String
+    prenom: String
+    email: String
+    telephone: String
+    job_title: String
+    location_id: Int
+  ): Employee!
+  updateUserPassword(employee_id: ID!, currentPassword: String!, newPassword: String!): User!
+  updateUserInfo(employee_id: ID!, username: String, hire_date: String): User!
+  updateUserRole(user_id: ID!, role: String!): User!
+  createInfraction(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Infraction!
+  createAbsence(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Absence!
+  createRetard(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Retard!
+  createTenueTravail(employee_id: ID!, name: String!, description: String, price: Float!): TenueTravail!
+  deleteInfraction(id: ID!): Boolean!
+  deleteAbsence(id: ID!): Boolean!
+  deleteRetard(id: ID!): Boolean!
+  deleteTenueTravail(id: ID!): Boolean!
+  approveEmployeeUpdate(approval_id: ID!): Boolean!
+  rejectEmployeeUpdate(approval_id: ID!, comment: String): Boolean!
+
+  managerRequestEmployeeUpdate(
+    employee_id: ID!
+    manager_id: ID!
+    old_values: String!
+    new_values: String!
+    employee_name: String!
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateInfraction(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    dat: String
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateAbsence(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    dat: String
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateRetard(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    dat: String
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateTenue(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    month: String
+  ): Boolean!
+  
+  managerRequestDeleteInfraction(
+    infraction_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteAbsence(
+    absence_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteRetard(
+    retard_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteTenue(
+    tenue_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestUpdateRole(
+    user_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+    old_role: String!
+    new_role: String!
+  ): Boolean!
+  
+  # Approval handlers for all types
+  
+  approveInfractionCreate(approval_id: ID!): Boolean!
+  rejectInfractionCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveAbsenceCreate(approval_id: ID!): Boolean!
+  rejectAbsenceCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveRetardCreate(approval_id: ID!): Boolean!
+  rejectRetardCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveTenueCreate(approval_id: ID!): Boolean!
+  rejectTenueCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveInfractionDelete(approval_id: ID!): Boolean!
+  rejectInfractionDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveAbsenceDelete(approval_id: ID!): Boolean!
+  rejectAbsenceDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveRetardDelete(approval_id: ID!): Boolean!
+  rejectRetardDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveTenueDelete(approval_id: ID!): Boolean!
+  rejectTenueDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveRoleUpdate(approval_id: ID!): Boolean!
+  rejectRoleUpdate(approval_id: ID!, comment: String): Boolean!
+  
 }
 
-input UserSchedulesInput {
-  employee_id: String!
-  schedules: [WorkScheduleInput!]!
-}
 type RecentActivity {
   id: ID!
   title: String!
@@ -504,61 +740,38 @@ type Query {
   employeesByDate(date: String!): [WorkSchedule!]!
 }
 
+type Query {
+  allUserWorkSchedules(start: String!, end: String!): [WorkSchedule!]!
+  recentActivities(limit: Int): [RecentActivity!]!
+  users: [User!]!
+  user(id: ID!): User
+  employees(locationId: ID): [Employee!]!
+  employee(id: ID!): Employee
+  locations: [Location!]!
+  location(id: ID!): Location
+  workSchedules(employee_id: ID, date: String): [WorkSchedule!]!
+  workSchedulesRange(employee_id: ID!): [WorkSchedule!]!
+  workSchedulesManager(start: String, end: String): [WorkSchedule!]!
+  contracts(employee_id: ID): [Contract!]!
+  leaveRequests(employee_id: ID, status: String): [LeaveRequest!]!
+  timeEntries(employeeId: ID!, startDate: String, endDate: String): [TimeEntry!]!
+  payrollPayments(period: String!): [PayrollPayment!]!
+  payrollPayment(employee_id: ID!, period: String!): PayrollPayment
+  dashboardStats(userId: ID!, role: String!): DashboardStats
+  adminApprovals(status: String): [AdminApproval!]!
+  notifications(user_id: ID!, role: String, only_unseen: Boolean): [Notification!]!
+  infractions(employee_id: ID!, period: String): [Infraction!]!
+  absences(employee_id: ID!, period: String): [Absence!]!
+  retards(employee_id: ID!, period: String): [Retard!]!
+  tenuesTravail(employee_id: ID!): [TenueTravail!]!
+  weeklyTemplateSchedules: [WorkSchedule!]!
+  todayWorkSchedule(employee_id: ID!, date: String!): [WorkSchedule!]!
+  employeesByDate(date: String!): [WorkSchedule!]!
+}
+
 type Mutation {
   login(username: String!, password: String!): User
-  createUser(username: String!, password: String!, role: String!, employee_id: String): User
-  updateEmployee(
-    id: ID!
-    salaire: Float
-    prime: Float
-    infractions: Int
-    absence: Int
-    retard: Int
-    avance: Float
-    tenu_de_travail: Int
-    status: String
-    price_j: Float
-  ): Employee
-  createWorkSchedule(
-    employee_id: ID!
-    date: String!
-    start_time: String
-    end_time: String
-    shift_type: String!
-    job_position: String!
-    is_working: Boolean!
-    location_id: ID!
-  ): WorkSchedule
-
-  createUserWorkSchedule(
-    employee_id: ID!
-    schedules: [WorkScheduleInput!]!
-  ): Boolean!
-  updateWorkSchedule(
-    id: ID!
-    start_time: String
-    end_time: String
-    shift_type: String
-    job_position: String
-    is_working: Boolean
-  ): WorkSchedule
-  createLeaveRequest(
-    employee_id: ID!
-    type: String!
-    start_date: String!
-    end_date: String!
-    reason: String
-  ): LeaveRequest
-  approveLeaveRequest(id: ID!, status: String!, comment: String): LeaveRequest
-  createContract(
-    employee_id: ID!
-    contract_type: String!
-    start_date: String!
-    end_date: String
-    salary: Float!
-    tenu_count: Int
-    documents: [String]
-  ): Contract
+  createUser(username: String!, password: String!, role: String!, employee_id: ID): User!
   createEmployee(
     username: String!
     email: String!
@@ -569,28 +782,89 @@ type Mutation {
     salaire: Float
     role: String
     location_id: ID
-  ): Employee
-  deleteEmployee(id: ID!): Boolean
-  clockIn(employeeId: ID!, locationId: ID!): TimeEntry
-  clockOut(timeEntryId: ID!): TimeEntry
-  createManagerWorkSchedule(
+  ): Employee!
+  updateEmployee(
+    id: ID!
+    salaire: Float
+    prime: Float
+    avance: Float
+    infractions: Int
+    absence: Int
+    retard: Int
+    tenu_de_travail: Int
+    status: String
+    price_j: Float
+  ): Employee!
+  deleteEmployee(id: ID!): Boolean!
+  createLocation(name: String!, address: String, phone: String, manager_id: ID): Location!
+  updateLocation(id: ID!, name: String, address: String, phone: String, manager_id: ID): Location!
+  deleteLocation(id: ID!): Boolean!
+  createWorkSchedule(
     employee_id: ID!
-    schedules: [WorkScheduleInput!]!
-  ): [WorkSchedule!]!
+    date: String!
+    start_time: String
+    end_time: String
+    shift_type: String!
+    job_position: String!
+    is_working: Boolean!
+    location_id: ID!
+  ): WorkSchedule!
+  updateWorkSchedule(
+    id: ID!
+    employee_id: ID!
+    date: String!
+    start_time: String
+    end_time: String
+    shift_type: String
+    job_position: String
+    is_working: Boolean
+    location_id: ID
+  ): WorkSchedule!
+  deleteWorkSchedule(id: ID!): Boolean!
+  deleteWorkSchedulesByEmployee(employee_id: ID!): Boolean!
+  createLeaveRequest(
+    employee_id: ID!
+    type: String!
+    start_date: String!
+    end_date: String!
+    reason: String
+  ): LeaveRequest!
+  approveLeaveRequest(id: ID!, status: String!, comment: String): LeaveRequest!
+  createContract(
+    employee_id: ID!
+    contract_type: String!
+    start_date: String!
+    end_date: String
+    salary: Float!
+    tenu_count: Int
+    documents: [String]
+  ): Contract!
+  clockIn(employeeId: ID!, locationId: ID!): TimeEntry!
+  clockOut(timeEntryId: ID!): TimeEntry!
+  paySalary(employee_id: ID!, period: String!): PayrollPayment!
+  createUserWorkSchedule(employee_id: ID!, schedules: [WorkScheduleInput!]!): Boolean!
+  createOrUpdateManyUserWorkSchedules(users: [UserWorkScheduleInput!]!): Boolean!
+  createManagerWorkSchedule(employee_id: ID!, schedules: [WorkScheduleInput!]!): [WorkSchedule!]!
   sendApprovalRequest(
     type: String!
     reference_id: ID
-    manager_id: ID
-    employee_id: ID
-    month: String
+    manager_id: ID!
+    employee_id: ID!
     data: String!
+    month: String!
   ): Boolean!
-  approveManagerSchedule(approval_id: ID!): Boolean!
-  rejectManagerSchedule(approval_id: ID!): Boolean!
   approveScheduleChange(approval_id: ID!): Boolean!
   rejectScheduleChange(approval_id: ID!, comment: String): Boolean!
-  paySalary(employee_id: ID!, period: String!): PayrollPayment!
-
+  approveManagerSchedule(approval_id: ID!): Boolean!
+  rejectManagerSchedule(approval_id: ID!, comment: String): Boolean!
+  createNotification(
+    user_id: ID!
+    role: String!
+    title: String!
+    message: String!
+    type: String!
+    reference_id: String
+  ): Boolean!
   markNotificationSeen(id: ID!): Boolean!
   markAllNotificationsSeen(user_id: ID!): Boolean!
   notifyPlanningForEmployee(employee_id: ID!, month: String!): Boolean!
@@ -602,49 +876,131 @@ type Mutation {
     telephone: String
     job_title: String
     location_id: Int
-  ): Employee
-  updateUserPassword(
-    employee_id: ID!
-    currentPassword: String!
-    newPassword: String!
-  ): User
-  updateUserInfo(
-    employee_id: ID!
-    username: String
-    hire_date: String
-  ): User
-  createInfraction(
-    employee_id: ID!
-    name: String!
-    description: String
-    price: Float!
-    dat: String
-  ): Infraction
+  ): Employee!
+  updateUserPassword(employee_id: ID!, currentPassword: String!, newPassword: String!): User!
+  updateUserInfo(employee_id: ID!, username: String, hire_date: String): User!
+  updateUserRole(user_id: ID!, role: String!): User!
+  createInfraction(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Infraction!
+  createAbsence(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Absence!
+  createRetard(employee_id: ID!, name: String!, description: String, price: Float!, dat: String): Retard!
+  createTenueTravail(employee_id: ID!, name: String!, description: String, price: Float!): TenueTravail!
   deleteInfraction(id: ID!): Boolean!
-  createAbsence(
-    employee_id: ID!
-    name: String!
-    description: String
-    price: Float!
-    dat: String
-  ): Absence
   deleteAbsence(id: ID!): Boolean!
-  createRetard(
+  deleteRetard(id: ID!): Boolean!
+  deleteTenueTravail(id: ID!): Boolean!
+  approveEmployeeUpdate(approval_id: ID!): Boolean!
+  rejectEmployeeUpdate(approval_id: ID!, comment: String): Boolean!
+
+  managerRequestEmployeeUpdate(
     employee_id: ID!
+    manager_id: ID!
+    old_values: String!
+    new_values: String!
+    employee_name: String!
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateInfraction(
+    employee_id: ID!
+    manager_id: ID!
     name: String!
     description: String
     price: Float!
     dat: String
-  ): Retard
-  deleteRetard(id: ID!): Boolean!
-  createTenueTravail(
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateAbsence(
     employee_id: ID!
+    manager_id: ID!
     name: String!
     description: String
     price: Float!
-  ): TenueTravail
-  deleteTenueTravail(id: ID!): Boolean!
-  deleteWorkSchedulesByEmployee(employee_id: ID!): Boolean!
+    dat: String
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateRetard(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    dat: String
+    month: String
+  ): Boolean!
+  
+  managerRequestCreateTenue(
+    employee_id: ID!
+    manager_id: ID!
+    name: String!
+    description: String
+    price: Float!
+    month: String
+  ): Boolean!
+  
+  managerRequestDeleteInfraction(
+    infraction_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteAbsence(
+    absence_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteRetard(
+    retard_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestDeleteTenue(
+    tenue_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+  ): Boolean!
+  
+  managerRequestUpdateRole(
+    user_id: ID!
+    employee_id: ID!
+    manager_id: ID!
+    old_role: String!
+    new_role: String!
+  ): Boolean!
+  
+  # Approval handlers for all types
+  approveEmployeeUpdate(approval_id: ID!): Boolean!
+  rejectEmployeeUpdate(approval_id: ID!, comment: String): Boolean!
+  
+  approveInfractionCreate(approval_id: ID!): Boolean!
+  rejectInfractionCreate(approval_id: ID!, comment: String): Boolean!
+  
+  rejectAbsenceCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveRetardCreate(approval_id: ID!): Boolean!
+  rejectRetardCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveTenueCreate(approval_id: ID!): Boolean!
+  rejectTenueCreate(approval_id: ID!, comment: String): Boolean!
+  
+  approveInfractionDelete(approval_id: ID!): Boolean!
+  rejectInfractionDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveAbsenceDelete(approval_id: ID!): Boolean!
+  rejectAbsenceDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveRetardDelete(approval_id: ID!): Boolean!
+  rejectRetardDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveTenueDelete(approval_id: ID!): Boolean!
+  rejectTenueDelete(approval_id: ID!, comment: String): Boolean!
+  
+  approveRoleUpdate(approval_id: ID!): Boolean!
+  rejectRoleUpdate(approval_id: ID!, comment: String): Boolean!
+  
 }
 
 input WorkScheduleInput {
@@ -659,6 +1015,11 @@ input WorkScheduleInput {
   day: String
   retard: String
   status: String
+}
+
+input UserWorkScheduleInput {
+  employee_id: String!
+  schedules: [WorkScheduleInput!]!
 }
 `
 
@@ -704,7 +1065,9 @@ const resolvers = {
     allUserWorkSchedules: async (_: any, { start, end }: { start: string; end: string }) => {
       try {
         // Get all employees
-        const employeesRes = await pool.query("SELECT id, nom, prenom FROM employees WHERE status = 'active' or status = 'inactive'")
+        const employeesRes = await pool.query(
+          "SELECT id, nom, prenom FROM employees WHERE status = 'active' or status = 'inactive'",
+        )
         const employees = employeesRes.rows
         // Build all dates in range
         const startDate = new Date(start)
@@ -1396,7 +1759,6 @@ const resolvers = {
           throw new Error("date is required to fetch employees by date.")
         }
 
-
         // Get all employees first
         const employeesResult = await pool.query("SELECT employee_id, username FROM users ")
         const employees = employeesResult.rows
@@ -1693,11 +2055,18 @@ const resolvers = {
           [validType, finalReferenceId, manager_id, data, "pending"],
         )
 
-        const notificationMessage = `Manager has proposed planning for employee ${employee_id} for month ${month}`
+        let notificationTitle = "Planning Approval Request"
+        let notificationMessage = `Manager has proposed planning for employee ${employee_id} for month ${month}`
+
+        if (type === "employee_update") {
+          notificationTitle = "Employee Update Request"
+          notificationMessage = `Manager has requested to update employee ${employee_id} information`
+        }
+
         await pool.query(
           `INSERT INTO notifications (user_id, role, title, message, type, reference_id, seen, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [1, "admin", "Planning Approval Request", notificationMessage, "planning_approval", finalReferenceId, false],
+          [manager_id, "manager", notificationTitle, notificationMessage, type, finalReferenceId, false], // Use manager_id as user_id for the notification
         )
 
         return true
@@ -1777,11 +2146,12 @@ const resolvers = {
         return false
       }
     },
-    rejectManagerSchedule: async (_: any, { approval_id }: any) => {
+    rejectManagerSchedule: async (_: any, { approval_id, comment }: any) => {
       try {
-        await pool.query("UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW() WHERE id = $1", [
-          approval_id,
-        ])
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
         return true
       } catch (error) {
         console.error("Error rejecting manager schedule:", error)
@@ -1810,7 +2180,7 @@ const resolvers = {
 
         await pool.query("UPDATE admin_approvals SET status = 'noactive', traite = 'oui' WHERE id = $1", [approval_id])
 
-        // Notify employee and their manager
+        // Notify employee and manager
         const empUserRes = await pool.query("SELECT id FROM users WHERE employee_id = $1 LIMIT 1", [
           schedule.employee_id,
         ])
@@ -1842,7 +2212,7 @@ const resolvers = {
           await createNotification({
             user_id: mgrUser.id,
             role: "manager",
-            title: "Planning employé approuvé",
+            title: "Planning employé mis à jour",
             message: `Changement du ${schedule.date} approuvé.`,
             type: "schedule_change",
             reference_id: approval_id,
@@ -2052,7 +2422,7 @@ const resolvers = {
         throw new Error("Failed to update employee")
       }
     },
-    // Enhanced update: update both per-user table and work_schedules for current week
+    // Enhanced update: save both per-user table and work_schedules for current week
     updateWorkSchedule: async (_: any, { id, employee_id, ...updates }: any) => {
       try {
         // 1. Update per-user table (find by date)
@@ -2661,7 +3031,7 @@ const resolvers = {
     },
     createAbsence: async (_: any, args: any) => {
       try {
-        const { employee_id, name, description, price, dat } = args
+        const { employee_id, name, description, price, dat, jsutif } = args
         let formattedDate = dat
         //console.log("Received date:", dat)
         if (dat) {
@@ -2682,8 +3052,8 @@ const resolvers = {
         }
 
         const result = await pool.query(
-          "INSERT INTO absences (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-          [employee_id, name, description, price, formattedDate],
+          "INSERT INTO absences (employee_id, name, description, price, dat, jsutif) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+          [employee_id, name, description, price, formattedDate, jsutif],
         )
         //console.log("saveddate", formattedDate)
         // Subtract price from employee's salary
@@ -2826,6 +3196,938 @@ const resolvers = {
         return true
       } catch (error) {
         console.error("Error deleting work schedules:", error)
+        return false
+      }
+    },
+
+    approveEmployeeUpdate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const parsedData = JSON.parse(approval.data)
+        const { employee_id, new_values } = parsedData
+
+        // Apply personal info updates
+        if (new_values.personal) {
+          const fields = []
+          const values = []
+          let paramIndex = 2
+
+          for (const [key, value] of Object.entries(new_values.personal)) {
+            fields.push(`${key} = $${paramIndex}`)
+            values.push(value)
+            paramIndex++
+          }
+
+          if (fields.length > 0) {
+            await pool.query(`UPDATE employees SET ${fields.join(", ")} WHERE id = $1`, [employee_id, ...values])
+          }
+        }
+
+        // Apply financial updates
+        if (new_values.financial) {
+          const fields = []
+          const values = []
+          let paramIndex = 2
+
+          for (const [key, value] of Object.entries(new_values.financial)) {
+            fields.push(`${key} = $${paramIndex}`)
+            values.push(value)
+            paramIndex++
+          }
+
+          if (fields.length > 0) {
+            await pool.query(`UPDATE employees SET ${fields.join(", ")} WHERE id = $1`, [employee_id, ...values])
+          }
+        }
+
+        // Apply user info updates
+        if (new_values.userInfo) {
+          const { username, password, hire_date } = new_values.userInfo
+
+          if (username) {
+            await pool.query("UPDATE users SET username = $1 WHERE employee_id = $2", [username, employee_id])
+          }
+
+          if (password) {
+            await pool.query("UPDATE users SET password = $1 WHERE employee_id = $2", [password, employee_id])
+          }
+
+          if (hire_date) {
+            await pool.query("UPDATE employees SET created_at = $1 WHERE id = $2", [hire_date, employee_id])
+          }
+        }
+
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        // Notify manager
+        const managerUserRes = await pool.query("SELECT id FROM users WHERE employee_id = $1", [approval.manager_id])
+        if (managerUserRes.rows.length > 0) {
+          await createNotification({
+            user_id: managerUserRes.rows[0].id,
+            role: "manager",
+            title: "Employee Update Approved",
+            message: `Your employee update request has been approved`,
+            type: "employee_update_approved",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error approving employee update:", error)
+        return false
+      }
+    },
+
+    rejectEmployeeUpdate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1", [approval_id])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+
+        // Notify manager
+        const managerUserRes = await pool.query("SELECT id FROM users WHERE employee_id = $1", [approval.manager_id])
+        if (managerUserRes.rows.length > 0) {
+          await createNotification({
+            user_id: managerUserRes.rows[0].id,
+            role: "manager",
+            title: "Employee Update Rejected",
+            message: comment || "Your employee update request has been rejected",
+            type: "employee_update_rejected",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error rejecting employee update:", error)
+        return false
+      }
+    },
+
+    managerRequestEmployeeUpdate: async (_: any, args: any) => {
+      try {
+        const { employee_id, manager_id, old_values, new_values, employee_name } = args
+
+        const data = JSON.stringify({
+          employee_id,
+          employee_name,
+          old_values: typeof old_values === "string" ? JSON.parse(old_values) : old_values,
+          new_values: typeof new_values === "string" ? JSON.parse(new_values) : new_values,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["employee_update", reference_id, manager_id, data, "pending"],
+        )
+
+        // Notify all admins
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de modification employé",
+            message: `Le manager demande de modifier les informations de ${employee_name}`,
+            type: "employee_update",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating employee update request:", error)
+        return false
+      }
+    },
+
+    managerRequestCreateInfraction: async (_: any, args: any) => {
+      try {
+        const { employee_id, manager_id, name, description, price, dat } = args
+
+        const data = JSON.stringify({
+          employee_id,
+          name,
+          description,
+          price,
+          dat,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["infraction_create", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande d'ajout d'infraction",
+            message: `Le manager demande d'ajouter une infraction: ${name}`,
+            type: "infraction_create",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating infraction request:", error)
+        return false
+      }
+    },
+
+    managerRequestCreateAbsence: async (_: any, args: any) => {
+      try {
+        const { employee_id, manager_id, name, description, price, dat, jsutif } = args
+
+        const data = JSON.stringify({
+          employee_id,
+          name,
+          description,
+          price,
+          dat,
+          jsutif,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["absence_create", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande d'ajout d'absence",
+            message: `Le manager demande d'ajouter une absence: ${name}`,
+            type: "absence_create",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating absence request:", error)
+        return false
+      }
+    },
+
+    managerRequestCreateRetard: async (_: any, args: any) => {
+      try {
+        const { employee_id, manager_id, name, description, price, dat } = args
+
+        const data = JSON.stringify({
+          employee_id,
+          name,
+          description,
+          price,
+          dat,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["retard_create", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande d'ajout de retard",
+            message: `Le manager demande d'ajouter un retard: ${name}`,
+            type: "retard_create",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating retard request:", error)
+        return false
+      }
+    },
+
+    managerRequestCreateTenue: async (_: any, args: any) => {
+      try {
+        const { employee_id, manager_id, name, description, price } = args
+
+        const data = JSON.stringify({
+          employee_id,
+          name,
+          description,
+          price,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["tenue_create", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande d'ajout de tenue de travail",
+            message: `Le manager demande d'ajouter une note de tenue: ${name}`,
+            type: "tenue_create",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating tenue request:", error)
+        return false
+      }
+    },
+
+    managerRequestDeleteInfraction: async (_: any, args: any) => {
+      try {
+        const { infraction_id, employee_id, manager_id } = args
+
+        const infractionRes = await pool.query("SELECT * FROM infractions WHERE id = $1", [infraction_id])
+        if (!infractionRes.rows.length) return false
+
+        const data = JSON.stringify({
+          infraction_id,
+          employee_id,
+          infraction: infractionRes.rows[0],
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["infraction_delete", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de suppression d'infraction",
+            message: `Le manager demande de supprimer une infraction`,
+            type: "infraction_delete",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating infraction delete request:", error)
+        return false
+      }
+    },
+
+    managerRequestDeleteAbsence: async (_: any, args: any) => {
+      try {
+        const { absence_id, employee_id, manager_id } = args
+
+        const absenceRes = await pool.query("SELECT * FROM absences WHERE id = $1", [absence_id])
+        if (!absenceRes.rows.length) return false
+
+        const data = JSON.stringify({
+          absence_id,
+          employee_id,
+          absence: absenceRes.rows[0],
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["absence_delete", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de suppression d'absence",
+            message: `Le manager demande de supprimer une absence`,
+            type: "absence_delete",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating absence delete request:", error)
+        return false
+      }
+    },
+
+    managerRequestDeleteRetard: async (_: any, args: any) => {
+      try {
+        const { retard_id, employee_id, manager_id } = args
+
+        const retardRes = await pool.query("SELECT * FROM retards WHERE id = $1", [retard_id])
+        if (!retardRes.rows.length) return false
+
+        const data = JSON.stringify({
+          retard_id,
+          employee_id,
+          retard: retardRes.rows[0],
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["retard_delete", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de suppression de retard",
+            message: `Le manager demande de supprimer un retard`,
+            type: "retard_delete",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating retard delete request:", error)
+        return false
+      }
+    },
+
+    managerRequestDeleteTenue: async (_: any, args: any) => {
+      try {
+        const { tenue_id, employee_id, manager_id } = args
+
+        const tenueRes = await pool.query("SELECT * FROM tenues_de_travail WHERE id = $1", [tenue_id])
+        if (!tenueRes.rows.length) return false
+
+        const data = JSON.stringify({
+          tenue_id,
+          employee_id,
+          tenue: tenueRes.rows[0],
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["tenue_delete", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de suppression de tenue",
+            message: `Le manager demande de supprimer une note de tenue`,
+            type: "tenue_delete",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating tenue delete request:", error)
+        return false
+      }
+    },
+
+    managerRequestUpdateRole: async (_: any, args: any) => {
+      try {
+        const { user_id, employee_id, manager_id, old_role, new_role } = args
+
+        const data = JSON.stringify({
+          user_id,
+          employee_id,
+          old_role,
+          new_role,
+        })
+
+        const reference_id = Math.floor(Date.now() / 1000)
+
+        await pool.query(
+          "INSERT INTO admin_approvals (type, reference_id, manager_id, data, status) VALUES ($1, $2, $3, $4, $5)",
+          ["role_update", reference_id, manager_id, data, "pending"],
+        )
+
+        const adminsRes = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        for (const admin of adminsRes.rows) {
+          await createNotification({
+            user_id: admin.id,
+            role: "admin",
+            title: "Demande de changement de rôle",
+            message: `Le manager demande de changer le rôle de ${old_role} à ${new_role}`,
+            type: "role_update",
+            reference_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error creating role update request:", error)
+        return false
+      }
+    },
+
+    approveInfractionCreate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { employee_id, name, description, price, dat } = JSON.parse(approval.data)
+
+        let formattedDate = dat
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          formattedDate = new Date().toISOString().slice(0, 10)
+        }
+
+        await pool.query(
+          "INSERT INTO infractions (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5)",
+          [employee_id, name, description, price, formattedDate],
+        )
+
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
+        if (userResult.rows.length > 0) {
+          await createNotification({
+            user_id: userResult.rows[0].id,
+            role: "employee",
+            title: "Nouvelle infraction",
+            message: `Une infraction "${name}" a été ajoutée. Montant: ${price} DT`,
+            type: "infraction",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error approving infraction create:", error)
+        return false
+      }
+    },
+
+    rejectInfractionCreate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting infraction create:", error)
+        return false
+      }
+    },
+
+    approveAbsenceCreate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { employee_id, name, description, price, dat } = JSON.parse(approval.data)
+
+        let formattedDate = dat
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          formattedDate = new Date().toISOString().slice(0, 10)
+        }
+
+        await pool.query(
+          "INSERT INTO absences (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5)",
+          [employee_id, name, description, price, formattedDate],
+        )
+
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
+        if (userResult.rows.length > 0) {
+          await createNotification({
+            user_id: userResult.rows[0].id,
+            role: "employee",
+            title: "Nouvelle absence",
+            message: `Une absence "${name}" a été enregistrée. Montant: ${price} DT`,
+            type: "absence",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error approving absence create:", error)
+        return false
+      }
+    },
+
+    rejectAbsenceCreate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting absence create:", error)
+        return false
+      }
+    },
+
+    approveRetardCreate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { employee_id, name, description, price, dat } = JSON.parse(approval.data)
+
+        let formattedDate = dat
+        if (dat) {
+          if (/^\d+$/.test(String(dat))) {
+            const d = new Date(Number(dat))
+            formattedDate = d.toISOString().slice(0, 10)
+          } else {
+            const parts = String(dat).split("/")
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+            }
+          }
+        } else {
+          formattedDate = new Date().toISOString().slice(0, 10)
+        }
+
+        await pool.query(
+          "INSERT INTO retards (employee_id, name, description, price, dat) VALUES ($1, $2, $3, $4, $5)",
+          [employee_id, name, description, price, formattedDate],
+        )
+
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
+        if (userResult.rows.length > 0) {
+          await createNotification({
+            user_id: userResult.rows[0].id,
+            role: "employee",
+            title: "Nouveau retard",
+            message: `Un retard "${name}" a été enregistré. Montant: ${price} DT`,
+            type: "retard",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error approving retard create:", error)
+        return false
+      }
+    },
+
+    rejectRetardCreate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting retard create:", error)
+        return false
+      }
+    },
+
+    approveTenueCreate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { employee_id, name, description, price } = JSON.parse(approval.data)
+
+        await pool.query(
+          "INSERT INTO tenues_de_travail (employee_id, name, description, price) VALUES ($1, $2, $3, $4)",
+          [employee_id, name, description, price],
+        )
+
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        const userResult = await pool.query("SELECT id FROM users WHERE employee_id = $1", [employee_id])
+        if (userResult.rows.length > 0) {
+          await createNotification({
+            user_id: userResult.rows[0].id,
+            role: "employee",
+            title: "Tenue de travail",
+            message: `Une note sur la tenue "${name}" a été ajoutée. Montant: ${price} DT`,
+            type: "tenue_travail",
+            reference_id: approval_id,
+          })
+        }
+
+        return true
+      } catch (error) {
+        console.error("Error approving tenue create:", error)
+        return false
+      }
+    },
+
+    rejectTenueCreate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting tenue create:", error)
+        return false
+      }
+    },
+
+    approveInfractionDelete: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { infraction_id } = JSON.parse(approval.data)
+
+        await pool.query("DELETE FROM infractions WHERE id = $1", [infraction_id])
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        return true
+      } catch (error) {
+        console.error("Error approving infraction delete:", error)
+        return false
+      }
+    },
+
+    rejectInfractionDelete: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting infraction delete:", error)
+        return false
+      }
+    },
+
+    approveAbsenceDelete: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { absence_id } = JSON.parse(approval.data)
+
+        await pool.query("DELETE FROM absences WHERE id = $1", [absence_id])
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        return true
+      } catch (error) {
+        console.error("Error approving absence delete:", error)
+        return false
+      }
+    },
+
+    rejectAbsenceDelete: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting absence delete:", error)
+        return false
+      }
+    },
+
+    approveRetardDelete: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { retard_id } = JSON.parse(approval.data)
+
+        await pool.query("DELETE FROM retards WHERE id = $1", [retard_id])
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        return true
+      } catch (error) {
+        console.error("Error approving retard delete:", error)
+        return false
+      }
+    },
+
+    rejectRetardDelete: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting retard delete:", error)
+        return false
+      }
+    },
+
+    approveTenueDelete: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { tenue_id } = JSON.parse(approval.data)
+
+        await pool.query("DELETE FROM tenues_de_travail WHERE id = $1", [tenue_id])
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        return true
+      } catch (error) {
+        console.error("Error approving tenue delete:", error)
+        return false
+      }
+    },
+
+    rejectTenueDelete: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting tenue delete:", error)
+        return false
+      }
+    },
+
+    approveRoleUpdate: async (_: any, { approval_id }: any) => {
+      try {
+        const approvalRes = await pool.query("SELECT * FROM admin_approvals WHERE id = $1 AND status = 'pending'", [
+          approval_id,
+        ])
+        if (!approvalRes.rows.length) return false
+
+        const approval = approvalRes.rows[0]
+        const { user_id, new_role } = JSON.parse(approval.data)
+
+        await pool.query("UPDATE users SET role = $1 WHERE id = $2", [new_role, user_id])
+        await pool.query("UPDATE admin_approvals SET status = 'approved', reviewed_at = NOW() WHERE id = $1", [
+          approval_id,
+        ])
+
+        await logRecentActivity({
+          title: "Rôle utilisateur modifié",
+          description: `Utilisateur ${user_id} rôle mis à jour: ${new_role}`,
+          type: "employee",
+          urgent: false,
+        })
+
+        return true
+      } catch (error) {
+        console.error("Error approving role update:", error)
+        return false
+      }
+    },
+
+    rejectRoleUpdate: async (_: any, { approval_id, comment }: any) => {
+      try {
+        await pool.query(
+          "UPDATE admin_approvals SET status = 'rejected', reviewed_at = NOW(), admin_comment = $2 WHERE id = $1",
+          [approval_id, comment || null],
+        )
+        return true
+      } catch (error) {
+        console.error("Error rejecting role update:", error)
         return false
       }
     },
